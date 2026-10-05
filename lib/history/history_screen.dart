@@ -18,7 +18,7 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserver {
   final _historyService = PhotoHistoryService();
   final _storageService = PhotoStorageService();
 
@@ -30,13 +30,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadEntries();
   }
 
-  /// Muat ulang daftar riwayat foto dari index lokal.
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Foto bisa dihapus lewat Galeri bawaan saat app di background, jadi
+  /// sinkronkan ulang daftar setiap app kembali aktif.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadEntries();
+  }
+
+  /// Muat ulang daftar riwayat foto dari index lokal, membuang entri yang
+  /// fotonya sudah tidak ada di penyimpanan.
   Future<void> _loadEntries() async {
-    final entries = await _historyService.loadAll();
-    if (mounted) setState(() => _entries = entries);
+    final entries = await _historyService.pruneMissing(await _historyService.loadAll());
+    if (!mounted) return;
+    setState(() {
+      _entries = entries;
+      final names = entries.map((e) => e.baseName).toSet();
+      _selectedBaseNames.removeWhere((name) => !names.contains(name));
+    });
   }
 
   /// Masuk/toggle mode pilih-banyak lewat tekan-tahan atau tombol pilih.
@@ -277,7 +297,7 @@ class _HistoryDetailScreen extends StatefulWidget {
   State<_HistoryDetailScreen> createState() => _HistoryDetailScreenState();
 }
 
-class _HistoryDetailScreenState extends State<_HistoryDetailScreen> {
+class _HistoryDetailScreenState extends State<_HistoryDetailScreen> with WidgetsBindingObserver {
   final _historyService = PhotoHistoryService();
   final _storageService = PhotoStorageService();
   late final PageController _pageController;
@@ -290,12 +310,38 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> {
     _entries = List.of(widget.entries);
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// Foto yang sedang dilihat bisa dihapus lewat Galeri bawaan saat app di
+  /// background: buang entri yang filenya hilang begitu app kembali aktif.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _dropMissingEntries();
+  }
+
+  Future<void> _dropMissingEntries() async {
+    final currentName = _entries.isEmpty ? null : _current.baseName;
+    final kept = await _historyService.pruneMissing(List.of(_entries));
+    if (!mounted || kept.length == _entries.length) return;
+    if (kept.isEmpty) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final index = kept.indexWhere((e) => e.baseName == currentName);
+    setState(() {
+      _entries = kept;
+      _currentIndex = index >= 0 ? index : _currentIndex.clamp(0, kept.length - 1);
+    });
+    _pageController.jumpToPage(_currentIndex);
   }
 
   HistoryEntry get _current => _entries[_currentIndex];

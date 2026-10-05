@@ -36,6 +36,20 @@ class PhotoHistoryService {
     }
   }
 
+  /// Buang entri yang foto processed-nya sudah tidak ada di penyimpanan
+  /// (mis. dihapus lewat Galeri bawaan HP) dari [entries] dan dari file
+  /// index. Pengecekan memakai path publik yang sama dengan yang dipakai
+  /// `PhotoStorageService`, jadi sah tanpa izin tambahan untuk media milik
+  /// aplikasi ini. Foto original yang hilang tidak membuat entri dibuang.
+  Future<List<HistoryEntry>> pruneMissing(List<HistoryEntry> entries) async {
+    final kept = <HistoryEntry>[];
+    for (final entry in entries) {
+      if (await File(entry.processedPath).exists()) kept.add(entry);
+    }
+    if (kept.length != entries.length) await _writeAll(kept);
+    return kept;
+  }
+
   /// Tambahkan satu entri baru ke index, disimpan paling depan (terbaru).
   Future<void> add(HistoryEntry entry) async {
     final entries = await loadAll();
