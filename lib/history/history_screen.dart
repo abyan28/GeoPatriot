@@ -333,6 +333,9 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> with Widgets
   late List<HistoryEntry> _entries;
   late int _currentIndex;
 
+  /// true saat foto yang sedang tampil diperbesar (> 1x); mengunci PageView.
+  bool _zoomed = false;
+
   @override
   void initState() {
     super.initState();
@@ -367,6 +370,7 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> with Widgets
     }
     final index = kept.indexWhere((e) => e.baseName == currentName);
     setState(() {
+      _zoomed = false;
       _entries = kept;
       _currentIndex = index >= 0 ? index : _currentIndex.clamp(0, kept.length - 1);
     });
@@ -468,6 +472,7 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> with Widgets
 
     final deletedIndex = _currentIndex;
     setState(() {
+      _zoomed = false;
       _entries.removeAt(deletedIndex);
       if (_entries.isNotEmpty && _currentIndex >= _entries.length) {
         _currentIndex = _entries.length - 1;
@@ -509,34 +514,114 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> with Widgets
       body: PageView.builder(
         controller: _pageController,
         itemCount: _entries.length,
-        onPageChanged: (index) => setState(() => _currentIndex = index),
+        // Saat foto sedang di-zoom, geser satu jari harus menggeser (pan) foto,
+        // bukan pindah halaman: kunci PageView sampai zoom kembali ke 1x.
+        physics: _zoomed ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+        onPageChanged: (index) => setState(() {
+          _currentIndex = index;
+          _zoomed = false;
+        }),
         itemBuilder: (context, index) {
-          return Center(
-            child: InteractiveViewer(
-              minScale: 1.0,
-              maxScale: 4.0,
-              child: Image.file(
-                File(_entries[index].processedPath),
-                fit: BoxFit.contain,
-                cacheWidth: 1600,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  padding: const EdgeInsets.all(24),
-                  color: Colors.black,
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.broken_image_outlined, size: 48, color: Colors.white38),
-                        SizedBox(height: 12),
-                        Text('Foto tidak ditemukan di penyimpanan.', style: TextStyle(color: Colors.white70)),
-                      ],
-                    ),
-                  ),
+          return _ZoomablePhoto(
+            key: ValueKey(_entries[index].baseName),
+            path: _entries[index].processedPath,
+            onZoomedChanged: (zoomed) {
+              if (index == _currentIndex && zoomed != _zoomed) setState(() => _zoomed = zoomed);
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Satu foto di layar detail dengan pinch-zoom, pan satu jari saat di-zoom,
+/// dan double-tap untuk zoom in/out. `InteractiveViewer` mengisi SELURUH
+/// halaman (bukan menyusut ke kotak gambar), supaya foto yang diperbesar
+/// tidak terpotong di batas kotak aslinya.
+class _ZoomablePhoto extends StatefulWidget {
+  const _ZoomablePhoto({super.key, required this.path, required this.onZoomedChanged});
+
+  final String path;
+
+  /// Dipanggil saat foto masuk/keluar dari kondisi ter-zoom (> 1x).
+  final ValueChanged<bool> onZoomedChanged;
+
+  @override
+  State<_ZoomablePhoto> createState() => _ZoomablePhotoState();
+}
+
+class _ZoomablePhotoState extends State<_ZoomablePhoto> {
+  static const _doubleTapScale = 2.5;
+
+  final _transformation = TransformationController();
+  Offset _doubleTapPosition = Offset.zero;
+  bool _zoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformation.addListener(_onTransformChanged);
+  }
+
+  @override
+  void dispose() {
+    _transformation.removeListener(_onTransformChanged);
+    _transformation.dispose();
+    super.dispose();
+  }
+
+  void _onTransformChanged() {
+    final zoomed = _transformation.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed == _zoomed) return;
+    _zoomed = zoomed;
+    widget.onZoomedChanged(zoomed);
+  }
+
+  /// Double-tap: kembali ke 1x bila sedang di-zoom, selain itu perbesar ke
+  /// [_doubleTapScale] berpusat di titik ketukan.
+  void _toggleZoom() {
+    if (_zoomed) {
+      _transformation.value = Matrix4.identity();
+      return;
+    }
+    final p = _doubleTapPosition;
+    _transformation.value = Matrix4.identity()
+      ..translateByDouble(-p.dx * (_doubleTapScale - 1), -p.dy * (_doubleTapScale - 1), 0, 1)
+      ..scaleByDouble(_doubleTapScale, _doubleTapScale, 1, 1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onDoubleTapDown: (details) => _doubleTapPosition = details.localPosition,
+      onDoubleTap: _toggleZoom,
+      child: SizedBox.expand(
+        child: InteractiveViewer(
+          transformationController: _transformation,
+          minScale: 1.0,
+          maxScale: 4.0,
+          clipBehavior: Clip.none,
+          child: Image.file(
+            File(widget.path),
+            fit: BoxFit.contain,
+            cacheWidth: 2400,
+            errorBuilder: (context, error, stackTrace) => Container(
+              padding: const EdgeInsets.all(24),
+              color: Colors.black,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.broken_image_outlined, size: 48, color: Colors.white38),
+                    SizedBox(height: 12),
+                    Text('Foto tidak ditemukan di penyimpanan.', style: TextStyle(color: Colors.white70)),
+                  ],
                 ),
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
