@@ -44,7 +44,9 @@ String _decodeApiKey(String encodedBase64, String passphrase) {
       bytes.length,
       (i) => bytes[i] ^ keyBytes[i % keyBytes.length],
     );
-    return utf8.decode(decoded);
+    // trim: spasi/baris baru ikut tersandi bila key disalin dari file .env
+    // yang tidak rapi, dan itu membuat LocationIQ membalas 401 "Invalid key".
+    return utf8.decode(decoded).trim();
   } catch (_) {
     return '';
   }
