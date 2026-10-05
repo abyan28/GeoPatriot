@@ -145,7 +145,9 @@ class CameraControllerService {
 
     final newController = CameraController(
       _cameras[index],
-      ResolutionPreset.high,
+      // veryHigh = 1080p. `high` hanya 1280x720 (0,9 MP), terlalu kecil untuk
+      // foto dokumentasi: preset yang sama dipakai preview DAN pengambilan foto.
+      ResolutionPreset.veryHigh,
       enableAudio: false,
     );
     try {
