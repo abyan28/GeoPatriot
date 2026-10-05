@@ -21,15 +21,20 @@ class ExifWriter {
     final exif = await Exif.fromPath(file.path);
     try {
       final values = <String, Object>{
-        'GPSLatitude': location.latitude,
-        'GPSLongitude': location.longitude,
-        'GPSLatitudeRef': location.latitude >= 0 ? 'N' : 'S',
-        'GPSLongitudeRef': location.longitude >= 0 ? 'E' : 'W',
         'DateTimeOriginal': DateFormat('yyyy:MM:dd HH:mm:ss').format(timestamp),
       };
 
+      // Lokasi pengganti (GPS tidak dapat fix) bukan data sungguhan: jangan
+      // tulis koordinat 0,0 ke file.
+      if (!location.isPlaceholder) {
+        values['GPSLatitude'] = location.latitude;
+        values['GPSLongitude'] = location.longitude;
+        values['GPSLatitudeRef'] = location.latitude >= 0 ? 'N' : 'S';
+        values['GPSLongitudeRef'] = location.longitude >= 0 ? 'E' : 'W';
+      }
+
       final altitude = location.altitude;
-      if (altitude != null) {
+      if (!location.isPlaceholder && altitude != null) {
         values['GPSAltitudeRef'] = altitude >= 0 ? '0' : '1';
         values['GPSAltitude'] = Platform.isIOS ? altitude.abs() : '${altitude.abs().round()}/1';
       }

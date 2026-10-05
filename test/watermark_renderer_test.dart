@@ -108,6 +108,23 @@ void main() {
     );
   });
 
+  test('peta berisi bytes bukan gambar tidak menggagalkan render', () {
+    final data = WatermarkData(
+      location: _sampleLocation(),
+      timestamp: DateTime(2026, 3, 5, 14, 30),
+      timeZoneName: 'WIB',
+      map: MapSnapshot(imageBytes: Uint8List.fromList([1, 2, 3, 4, 5]), attributionText: 'Atribusi peta'),
+    );
+
+    final result = renderer.render(
+      sourceImageBytes: _fakeJpeg(1080, 1920),
+      data: data,
+      config: WatermarkConfiguration.defaultTemplate(),
+    );
+
+    expect(img.decodeJpg(result), isNotNull);
+  });
+
   test('resolusi kecil tetap dapat dirender tanpa exception', () {
     final data = WatermarkData(
       location: _sampleLocation(),

@@ -135,8 +135,8 @@ class WatermarkPublisher {
       originalPath: originalFile.path,
       processedPath: processedFile.path,
       timestamp: timestamp,
-      latitude: location.latitude,
-      longitude: location.longitude,
+      latitude: location.isPlaceholder ? null : location.latitude,
+      longitude: location.isPlaceholder ? null : location.longitude,
       addressText: address == null ? null : _formattedAddress(address),
     ));
 

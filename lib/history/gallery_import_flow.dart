@@ -50,14 +50,21 @@ Future<int> importFromGallery(
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => ManualOverrideSheet(
-      initial: ManualOverride(
-        latitude: hasFirstCoords ? firstExif.latitude : null,
-        longitude: hasFirstCoords ? firstExif.longitude : null,
-        timestamp: firstExif.capturedAt,
-      ),
-      title: 'Tambah watermark (${picked.length} foto)',
-      description: 'Koordinat dan waktu yang diisi berlaku untuk SEMUA foto yang dipilih. '
-          'Kosongkan untuk memakai data EXIF masing-masing foto; foto tanpa koordinat dilewati.',
+      // Prefill dari EXIF HANYA untuk satu foto: untuk banyak foto, nilai
+      // yang terisi akan dianggap override dan menimpa EXIF foto lainnya.
+      initial: picked.length == 1
+          ? ManualOverride(
+              latitude: hasFirstCoords ? firstExif.latitude : null,
+              longitude: hasFirstCoords ? firstExif.longitude : null,
+              timestamp: firstExif.capturedAt,
+            )
+          : null,
+      title: picked.length == 1 ? 'Tambah watermark' : 'Tambah watermark (${picked.length} foto)',
+      description: picked.length == 1
+          ? 'Koordinat dan waktu terisi dari EXIF foto bila ada. Ubah atau lengkapi bila perlu; '
+              'foto tanpa koordinat dilewati.'
+          : 'Koordinat dan waktu yang diisi berlaku untuk SEMUA foto yang dipilih. '
+              'Kosongkan untuk memakai data EXIF masing-masing foto; foto tanpa koordinat dilewati.',
       resetLabel: 'Pakai data EXIF',
     ),
   );

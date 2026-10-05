@@ -384,7 +384,10 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> with Widgets
   void _showInfo() {
     final entry = _current;
     final formattedDate = DateFormat('dd MMMM yyyy, HH:mm:ss', 'id_ID').format(entry.timestamp);
-    final coordText = '${entry.latitude.toStringAsFixed(6)}, ${entry.longitude.toStringAsFixed(6)}';
+    final latitude = entry.latitude;
+    final longitude = entry.longitude;
+    final coordText =
+        latitude == null || longitude == null ? 'Tidak tersedia' : '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
 
     showModalBottomSheet<void>(
       context: context,

@@ -29,4 +29,31 @@ void main() {
     expect(snapshot.accuracyCategory, AccuracyCategory.good);
     expect(snapshot.isStale, isTrue);
   });
+
+  test('isPlaceholder hanya untuk pengganti 0,0 saat GPS tanpa fix', () {
+    final placeholder = LocationSnapshot(
+      latitude: 0,
+      longitude: 0,
+      accuracy: null,
+      capturedAt: DateTime(2026, 1, 1),
+      isStale: true,
+    );
+    final manualZero = LocationSnapshot(
+      latitude: 0,
+      longitude: 0,
+      accuracy: null,
+      capturedAt: DateTime(2026, 1, 1),
+    );
+    final real = LocationSnapshot(
+      latitude: -6.2,
+      longitude: 106.8,
+      accuracy: 10,
+      capturedAt: DateTime(2026, 1, 1),
+      isStale: true,
+    );
+
+    expect(placeholder.isPlaceholder, isTrue);
+    expect(manualZero.isPlaceholder, isFalse);
+    expect(real.isPlaceholder, isFalse);
+  });
 }

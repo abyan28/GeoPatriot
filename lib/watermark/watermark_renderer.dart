@@ -60,8 +60,11 @@ class WatermarkRenderer {
     // Normalisasi orientasi EXIF supaya piksel sesuai tampilan portrait/landscape asli.
     final oriented = img.bakeOrientation(source);
 
-    final entries = _buildTextLines(data, config);
-    final showThumbnail = config.showMapThumbnail && data.map != null;
+    // Peta bersifat opsional: bytes yang tidak bisa didekode (bukan gambar
+    // valid) cukup dilewati, tidak boleh menggagalkan seluruh foto.
+    final mapImage = config.showMapThumbnail ? _decodeMapSafely(data) : null;
+    final showThumbnail = mapImage != null;
+    final entries = _buildTextLines(data, config, showMapAttribution: showThumbnail);
     final bodyFont = _fontFor(config.fontSize);
     final titleFont = _titleFontFor(bodyFont);
 
@@ -116,7 +119,7 @@ class WatermarkRenderer {
 
     if (showThumbnail) {
       final resizedMap = img.copyResize(
-        img.decodePng(data.map!.imageBytes)!,
+        mapImage,
         width: thumbnailSize,
         height: thumbnailSize,
       );
@@ -146,7 +149,11 @@ class WatermarkRenderer {
   /// dilewati, tidak pernah mengarang isi. Baris alamat ditandai boleh
   /// wrap sampai 2 baris karena secara alami paling berisiko panjang.
   /// Baris nama lokasi ditandai sebagai judul (font lebih besar).
-  List<_WatermarkLine> _buildTextLines(WatermarkData data, WatermarkConfiguration config) {
+  List<_WatermarkLine> _buildTextLines(
+    WatermarkData data,
+    WatermarkConfiguration config, {
+    required bool showMapAttribution,
+  }) {
     final lines = <_WatermarkLine>[];
     final address = data.address;
     final formatter = AddressFormatter();
@@ -197,15 +204,26 @@ class WatermarkRenderer {
     // appBrandingText TIDAK lagi jadi baris teks biasa di sini — sekarang
     // jadi baris header terpisah di pojok kanan-atas panel, lihat `render()`.
 
-    if (config.showMapThumbnail && data.map != null) {
+    if (showMapAttribution) {
       lines.add(_WatermarkLine(data.map!.attributionText));
     }
 
     return lines;
   }
 
+  /// Dekode bytes peta menjadi gambar, atau null jika tidak ada/rusak.
+  img.Image? _decodeMapSafely(WatermarkData data) {
+    final map = data.map;
+    if (map == null) return null;
+    try {
+      return img.decodeImage(map.imageBytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _coordinatesText(LocationSnapshot location) {
-    if (location.latitude == 0.0 && location.longitude == 0.0 && location.accuracy == null) {
+    if (location.isPlaceholder) {
       return 'Mencari sinyal GPS...';
     }
     return '${location.latitude.toStringAsFixed(6)}, ${location.longitude.toStringAsFixed(6)}';

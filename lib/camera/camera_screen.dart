@@ -64,6 +64,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   AppPermissionsSummary? _permissions;
   bool _cameraReady = false;
+  bool _cameraFailed = false;
   LocationSnapshot? _liveLocation;
   AddressSnapshot? _liveAddress;
   MapSnapshot? _liveMap;
@@ -119,15 +120,26 @@ class _CameraScreenState extends State<CameraScreen>
 
   /// Nyalakan kamera dan mulai stream lokasi live setelah izin lengkap.
   Future<void> _startCameraAndLocation() async {
-    await _cameraService.initialize();
-    if (mounted) setState(() => _cameraReady = true);
+    try {
+      await _cameraService.initialize();
+    } catch (e) {
+      debugPrint('Gagal membuka kamera: $e');
+      if (mounted) setState(() => _cameraFailed = true);
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _cameraReady = true;
+        _cameraFailed = false;
+      });
+    }
     // Cegah layar mati otomatis selagi preview kamera aktif, seperti
     // aplikasi kamera pada umumnya.
     await WakelockPlus.enable();
 
     await _syncZoomToDefault();
 
-    _locationSubscription = _locationService.watchSnapshot().listen(
+    _locationSubscription ??= _locationService.watchSnapshot().listen(
       (snapshot) {
         if (mounted) setState(() => _liveLocation = snapshot);
         if (_manualOverride?.hasCoordinates != true) _maybeUpdateLiveWatermarkData(snapshot);
@@ -275,13 +287,31 @@ class _CameraScreenState extends State<CameraScreen>
       _cameraService.pause();
       WakelockPlus.disable();
     } else if (state == AppLifecycleState.resumed) {
-      _cameraService.resume().then((_) async {
-        if (!mounted) return;
-        setState(() => _cameraReady = true);
-        if (_cameraService.isInitialized) await _syncZoomToDefault();
-      });
+      _resumeCamera();
       WakelockPlus.enable();
     }
+  }
+
+  /// Buka kembali kamera setelah app aktif lagi; bila gagal, tampilkan
+  /// layar error dengan tombol coba lagi (bukan spinner tanpa akhir).
+  Future<void> _resumeCamera() async {
+    try {
+      await _cameraService.resume();
+    } catch (e) {
+      debugPrint('Gagal membuka kembali kamera: $e');
+      if (mounted) setState(() => _cameraFailed = true);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _cameraReady = true);
+    if (_cameraService.isInitialized) await _syncZoomToDefault();
+  }
+
+  /// Coba lagi membuka kamera setelah gagal.
+  Future<void> _retryCamera() async {
+    setState(() => _cameraFailed = false);
+    await _cameraService.pause();
+    await _startCameraAndLocation();
   }
 
   /// Ganti kamera depan/belakang. Preview dicabut dari widget tree (dan satu
@@ -304,7 +334,10 @@ class _CameraScreenState extends State<CameraScreen>
     final ready = _cameraService.isInitialized;
     if (ready) await _syncZoomToDefault();
     if (!mounted) return;
-    setState(() => _cameraReady = ready);
+    setState(() {
+      _cameraReady = ready;
+      _cameraFailed = !ready;
+    });
     if (errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
     }
@@ -394,6 +427,8 @@ class _CameraScreenState extends State<CameraScreen>
                 value: _captureController,
                 child: _CameraBody(
                   cameraReady: _cameraReady,
+                  cameraFailed: _cameraFailed,
+                  onRetryCamera: _retryCamera,
                   controller: _cameraService.controller,
                   liveLocation: _liveLocation,
                   watermarkLocation: _watermarkLocation,
@@ -498,9 +533,43 @@ class _PermissionGate extends StatelessWidget {
   }
 }
 
+/// Layar pengganti preview saat kamera gagal dibuka (mis. dipakai aplikasi
+/// lain atau izin dicabut), supaya pengguna tidak melihat spinner selamanya.
+class _CameraError extends StatelessWidget {
+  const _CameraError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.videocam_off_outlined, size: 48, color: Colors.white70),
+            const SizedBox(height: 16),
+            const Text(
+              'Kamera tidak bisa dibuka. Pastikan izin kamera aktif dan kamera '
+              'tidak sedang dipakai aplikasi lain.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(onPressed: onRetry, child: const Text('Coba lagi')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CameraBody extends StatelessWidget {
   const _CameraBody({
     required this.cameraReady,
+    required this.cameraFailed,
+    required this.onRetryCamera,
     required this.controller,
     required this.liveLocation,
     required this.watermarkLocation,
@@ -526,6 +595,8 @@ class _CameraBody extends StatelessWidget {
   });
 
   final bool cameraReady;
+  final bool cameraFailed;
+  final VoidCallback onRetryCamera;
   final CameraController? controller;
   final LocationSnapshot? liveLocation;
   final LocationSnapshot? watermarkLocation;
@@ -571,6 +642,8 @@ class _CameraBody extends StatelessWidget {
                 onScaleUpdate: onScaleUpdate,
                 child: Center(child: FixedCameraPreview(controller!)),
               )
+            else if (cameraFailed)
+              _CameraError(onRetry: onRetryCamera)
             else
               const Center(child: CircularProgressIndicator()),
 

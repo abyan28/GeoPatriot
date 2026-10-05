@@ -56,4 +56,10 @@ class LocationSnapshot {
   final bool isStale;
 
   AccuracyCategory get accuracyCategory => AccuracyCategory.fromMeters(accuracy);
+
+  /// true jika ini BUKAN lokasi sungguhan: pengganti 0,0 yang dibuat
+  /// `LocationService.freezeSnapshot` saat GPS tidak memberi fix sama sekali.
+  /// Koordinat ini tidak boleh ditulis ke EXIF/riwayat. (Koordinat 0,0 yang
+  /// sengaja diisi manual tidak termasuk: itu tidak ditandai [isStale].)
+  bool get isPlaceholder => isStale && latitude == 0.0 && longitude == 0.0 && accuracy == null;
 }
