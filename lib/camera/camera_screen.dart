@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/capture_controller.dart';
+import '../capture/manual_override.dart';
 import '../core/network/safe_fetch.dart';
 import '../core/permissions/app_permissions.dart';
 import '../geocoding/cached_geocoding_provider.dart';
@@ -24,6 +25,7 @@ import '../core/theme/camera_tokens.dart';
 import 'widgets/camera_bottom_bar.dart';
 import 'widgets/fixed_camera_preview.dart';
 import 'widgets/gps_status_pill.dart';
+import 'widgets/manual_override_sheet.dart';
 import 'camera_controller_service.dart';
 import 'device_rotation_controller.dart';
 import 'edge_anchored_rotated.dart';
@@ -70,6 +72,9 @@ class _CameraScreenState extends State<CameraScreen>
   Timer? _savedBannerTimer;
   bool _isFlashing = false;
 
+  // Koordinat/waktu manual (in-memory, hilang saat app ditutup).
+  ManualOverride? _manualOverride;
+
   // Zoom kamera sungguhan (hardware/optik lewat API resmi package `camera`,
   // BUKAN crop digital) — dikendalikan lewat ZoomRulerControl (drag) DAN
   // gesture cubit di preview, keduanya menulis ke `_currentZoom` yang SAMA
@@ -96,6 +101,7 @@ class _CameraScreenState extends State<CameraScreen>
       historyService: PhotoHistoryService(),
       watermarkConfigProvider: () => settings.settings.watermark,
       saveOriginalProvider: () => settings.settings.saveOriginal,
+      manualOverrideProvider: () => _manualOverride,
     );
     _bootstrap();
   }
@@ -131,12 +137,43 @@ class _CameraScreenState extends State<CameraScreen>
     _locationSubscription = _locationService.watchSnapshot().listen(
       (snapshot) {
         if (mounted) setState(() => _liveLocation = snapshot);
-        _maybeUpdateLiveWatermarkData(snapshot);
+        if (_manualOverride?.hasCoordinates != true) _maybeUpdateLiveWatermarkData(snapshot);
       },
       onError: (_) {
         // GPS mati/bermasalah: biarkan status tetap null, tampilkan fallback di UI.
       },
     );
+  }
+
+  /// Lokasi yang dipakai watermark: koordinat manual bila aktif, selain itu
+  /// GPS live.
+  LocationSnapshot? get _watermarkLocation {
+    final manual = _manualOverride;
+    if (manual != null && manual.hasCoordinates) {
+      return manual.toLocationSnapshot(capturedAt: manual.timestamp ?? DateTime.now());
+    }
+    return _liveLocation;
+  }
+
+  /// Buka sheet input manual, terapkan hasilnya, lalu muat ulang alamat dan
+  /// peta untuk koordinat yang berlaku.
+  Future<void> _openManualOverride() async {
+    final result = await showModalBottomSheet<ManualOverride>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => ManualOverrideSheet(initial: _manualOverride),
+    );
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _manualOverride = result.isEmpty ? null : result;
+      _liveAddress = null;
+      _liveMap = null;
+    });
+    _lastLiveGeoKey = null;
+    final location = _watermarkLocation;
+    if (location != null) _maybeUpdateLiveWatermarkData(location);
   }
 
   /// Ambil alamat/map thumbnail untuk watermark live HANYA saat lokasi
@@ -339,6 +376,10 @@ class _CameraScreenState extends State<CameraScreen>
                   cameraReady: _cameraReady,
                   controller: _cameraService.controller,
                   liveLocation: _liveLocation,
+                  watermarkLocation: _watermarkLocation,
+                  manualTimestamp: _manualOverride?.timestamp,
+                  manualActive: _manualOverride != null,
+                  onOpenManualOverride: _openManualOverride,
                   liveAddress: _liveAddress,
                   liveMap: _liveMap,
                   showSavedBanner: _showSavedBanner,
@@ -441,6 +482,10 @@ class _CameraBody extends StatelessWidget {
     required this.cameraReady,
     required this.controller,
     required this.liveLocation,
+    required this.watermarkLocation,
+    required this.manualTimestamp,
+    required this.manualActive,
+    required this.onOpenManualOverride,
     required this.liveAddress,
     required this.liveMap,
     required this.showSavedBanner,
@@ -461,6 +506,10 @@ class _CameraBody extends StatelessWidget {
   final bool cameraReady;
   final CameraController? controller;
   final LocationSnapshot? liveLocation;
+  final LocationSnapshot? watermarkLocation;
+  final DateTime? manualTimestamp;
+  final bool manualActive;
+  final VoidCallback onOpenManualOverride;
   final AddressSnapshot? liveAddress;
   final MapSnapshot? liveMap;
   final bool showSavedBanner;
@@ -547,6 +596,27 @@ class _CameraBody extends StatelessWidget {
                       _RotatedControl(
                         child: GpsStatusPill(location: liveLocation),
                       ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _RotatedControl(
+                            child: IconButton(
+                              tooltip: 'Input manual koordinat & waktu',
+                              style: IconButton.styleFrom(
+                                backgroundColor: manualActive
+                                    ? Theme.of(context).colorScheme.primary
+                                    : CameraTokens.hudBackground,
+                                side: BorderSide(color: CameraTokens.hudBorder, width: 1),
+                                padding: const EdgeInsets.all(10),
+                              ),
+                              icon: Icon(
+                                Icons.edit_location_alt_outlined,
+                                color: manualActive ? Theme.of(context).colorScheme.onPrimary : Colors.white,
+                              ),
+                              onPressed: onOpenManualOverride,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                       _RotatedControl(
                         child: IconButton(
                           tooltip: 'Pengaturan',
@@ -558,6 +628,8 @@ class _CameraBody extends StatelessWidget {
                           icon: const Icon(Icons.settings_outlined, color: Colors.white),
                           onPressed: onOpenSettings,
                         ),
+                      ),
+                        ],
                       ),
                     ],
                   ),
@@ -633,7 +705,8 @@ class _CameraBody extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           LiveWatermarkOverlay(
-            location: liveLocation,
+            location: watermarkLocation,
+            timestampOverride: manualTimestamp,
             address: liveAddress,
             mapThumbnailBytes: liveMap?.imageBytes,
             previewScale: previewScale,

@@ -22,6 +22,7 @@ import '../watermark/models/watermark_configuration.dart';
 import '../watermark/models/watermark_data.dart';
 import '../watermark/watermark_renderer.dart';
 import 'exif_writer.dart';
+import 'manual_override.dart';
 import 'models/capture_session.dart';
 
 enum CaptureStatus { idle, capturing, success, error }
@@ -41,6 +42,7 @@ class CaptureController extends ChangeNotifier {
     required PhotoHistoryService historyService,
     required WatermarkConfiguration Function() watermarkConfigProvider,
     required bool Function() saveOriginalProvider,
+    ManualOverride? Function()? manualOverrideProvider,
     WatermarkRenderer? watermarkRenderer,
     ExifWriter? exifWriter,
   })  : _locationService = locationService,
@@ -51,6 +53,7 @@ class CaptureController extends ChangeNotifier {
         _historyService = historyService,
         _watermarkConfigProvider = watermarkConfigProvider,
         _saveOriginalProvider = saveOriginalProvider,
+        _manualOverrideProvider = manualOverrideProvider,
         _watermarkRenderer = watermarkRenderer ?? WatermarkRenderer(),
         _exifWriter = exifWriter ?? ExifWriter();
 
@@ -62,6 +65,10 @@ class CaptureController extends ChangeNotifier {
   final PhotoHistoryService _historyService;
   final WatermarkConfiguration Function() _watermarkConfigProvider;
   final bool Function() _saveOriginalProvider;
+
+  /// Koordinat/waktu manual yang aktif saat ini (null = pakai GPS dan jam
+  /// perangkat).
+  final ManualOverride? Function()? _manualOverrideProvider;
   final WatermarkRenderer _watermarkRenderer;
   final ExifWriter _exifWriter;
 
@@ -98,8 +105,11 @@ class CaptureController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final timestamp = DateTime.now();
-      final location = await _locationService.freezeSnapshot();
+      final manual = _manualOverrideProvider?.call();
+      final timestamp = manual?.timestamp ?? DateTime.now();
+      final location = manual != null && manual.hasCoordinates
+          ? manual.toLocationSnapshot(capturedAt: timestamp)
+          : await _locationService.freezeSnapshot();
       final photo = await _cameraService.takePicture();
       final baseName = await _storageService.reserveBaseName(timestamp);
       final stagingOriginal = await _storageService.saveOriginal(photo.path, baseName: baseName);

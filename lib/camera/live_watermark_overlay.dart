@@ -65,6 +65,7 @@ class LiveWatermarkOverlay extends StatelessWidget {
     required this.mapThumbnailBytes,
     required this.previewScale,
     required this.previewAreaSize,
+    this.timestampOverride,
     this.topClearance = 0,
     this.bottomClearance = 0,
   });
@@ -85,6 +86,9 @@ class LiveWatermarkOverlay extends StatelessWidget {
   /// itu benar-benar menjorok ke dalam frame preview. Overlay ini harus
   /// ditempatkan di dalam `Stack` yang berukuran sama dengan frame preview.
   final double topClearance;
+
+  /// Waktu manual (lihat `ManualOverride`); null berarti pakai jam perangkat.
+  final DateTime? timestampOverride;
   final double bottomClearance;
 
   /// Faktor skala dari "1 piksel resolusi asli kamera" ke "1 logical pixel
@@ -129,6 +133,7 @@ class LiveWatermarkOverlay extends StatelessWidget {
       config,
       location,
       address,
+      now: timestampOverride ?? DateTime.now(),
       fontSize: fontSize,
       spacing: spacing,
     );
@@ -279,6 +284,7 @@ class LiveWatermarkOverlay extends StatelessWidget {
     WatermarkConfiguration config,
     LocationSnapshot location,
     AddressSnapshot? address, {
+    required DateTime now,
     required double fontSize,
     required double spacing,
   }) {
@@ -330,10 +336,9 @@ class LiveWatermarkOverlay extends StatelessWidget {
 
     if (config.showCoordinates) addLine(_coordinatesText(location));
     if (config.showDate) {
-      addLine(DateFormat('dd MMM yyyy', 'id_ID').format(DateTime.now()));
+      addLine(DateFormat('dd MMM yyyy', 'id_ID').format(now));
     }
     if (config.showTime) {
-      final now = DateTime.now();
       final time = DateFormat('HH:mm:ss', 'id_ID').format(now);
       addLine(config.showTimezone ? '$time (${now.timeZoneName})' : time);
     }
