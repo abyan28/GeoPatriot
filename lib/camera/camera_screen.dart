@@ -221,6 +221,38 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  /// Ganti kamera depan/belakang. Preview dicabut dari widget tree (dan satu
+  /// frame ditunggu) SEBELUM controller lama di-dispose, supaya tidak ada
+  /// widget yang masih memakai controller yang sudah dibuang.
+  Future<void> _onSwitchCamera() async {
+    if (_cameraService.isSwitching || !_cameraReady) return;
+    setState(() => _cameraReady = false);
+    await WidgetsBinding.instance.endOfFrame;
+
+    String? errorMessage;
+    try {
+      await _cameraService.switchCamera();
+    } catch (e) {
+      debugPrint('Gagal berpindah kamera: $e');
+      errorMessage = 'Gagal berpindah kamera. Coba lagi.';
+    }
+    if (!mounted) return;
+
+    final ready = _cameraService.isInitialized;
+    final minZoom = ready ? await _cameraService.getMinZoomLevel() : 1.0;
+    final maxZoom = ready ? await _cameraService.getMaxZoomLevel() : 1.0;
+    if (!mounted) return;
+    setState(() {
+      _cameraReady = ready;
+      _minZoom = minZoom;
+      _maxZoom = maxZoom;
+      _currentZoom = minZoom;
+    });
+    if (errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
+    }
+  }
+
   /// Bersihkan semua resource (observer, stream lokasi, kamera) saat layar
   /// ditutup.
   @override
@@ -318,10 +350,7 @@ class _CameraScreenState extends State<CameraScreen>
                   onScaleStart: _onScaleStart,
                   onScaleUpdate: _onScaleUpdate,
                   onRulerZoomChanged: _onRulerZoomChanged,
-                  onSwitchCamera: () async {
-                    await _cameraService.switchCamera();
-                    setState(() {});
-                  },
+                  onSwitchCamera: _onSwitchCamera,
                   onShutterPressed: _onShutterPressed,
                   onOpenGallery: () => Navigator.of(context).pushNamed('/history'),
                   onOpenSettings: () => Navigator.of(context).pushNamed('/settings'),

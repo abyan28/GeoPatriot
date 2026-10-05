@@ -10,12 +10,17 @@ class CameraControllerService {
   List<CameraDescription> _cameras = const [];
   CameraController? _controller;
   int _selectedCameraIndex = 0;
+  bool _switching = false;
 
   CameraController? get controller => _controller;
 
   bool get isInitialized => _controller?.value.isInitialized ?? false;
 
   bool get hasMultipleCameras => _cameras.length > 1;
+
+  /// True selama [switchCamera] berjalan; dipakai pemanggil untuk menolak
+  /// tap ganda pada tombol switch.
+  bool get isSwitching => _switching;
 
   /// Ambil daftar kamera yang tersedia lalu buka kamera pertama.
   Future<void> initialize() async {
@@ -27,11 +32,30 @@ class CameraControllerService {
   }
 
   /// Pindah ke kamera berikutnya (mis. depan ke belakang) jika perangkat
-  /// punya lebih dari satu kamera.
+  /// punya lebih dari satu kamera. Controller lama dilepas LEBIH DULU
+  /// sebelum yang baru dibuka (lihat [_openCamera]), jadi pemanggil harus
+  /// sudah berhenti merender preview dari [controller] sebelum memanggil
+  /// ini. Jika kamera baru gagal dibuka, kamera sebelumnya dibuka kembali
+  /// dan exception dilempar ulang.
   Future<void> switchCamera() async {
-    if (!hasMultipleCameras) return;
-    _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
-    await _openCamera(_selectedCameraIndex);
+    if (!hasMultipleCameras || _switching) return;
+    _switching = true;
+    final previousIndex = _selectedCameraIndex;
+    try {
+      _selectedCameraIndex = (previousIndex + 1) % _cameras.length;
+      await _openCamera(_selectedCameraIndex);
+    } catch (_) {
+      _selectedCameraIndex = previousIndex;
+      try {
+        await _openCamera(previousIndex);
+      } catch (_) {
+        // Kamera sebelumnya pun gagal dibuka: controller tetap null,
+        // pemanggil menangani lewat exception asli di bawah.
+      }
+      rethrow;
+    } finally {
+      _switching = false;
+    }
   }
 
   /// Atur mode flash kamera (mis. off/auto/torch) jika kamera sudah siap.
@@ -108,17 +132,28 @@ class CameraControllerService {
     _controller = null;
   }
 
-  /// Buat dan inisialisasi `CameraController` baru untuk kamera pada index
-  /// tertentu, lalu lepaskan controller lama setelah yang baru siap.
+  /// Lepaskan controller lama LEBIH DULU, baru buat dan inisialisasi
+  /// `CameraController` baru untuk kamera pada index tertentu. Dua
+  /// controller tidak boleh hidup bersamaan: banyak perangkat (CameraX)
+  /// gagal/menggantung saat membuka kamera depan selama sesi kamera
+  /// belakang belum dilepas, dan [controller] lama yang sudah di-dispose
+  /// tidak boleh tersisa sebagai nilai yang bisa dibaca widget.
   Future<void> _openCamera(int index) async {
     final previous = _controller;
+    _controller = null;
+    await previous?.dispose();
+
     final newController = CameraController(
       _cameras[index],
       ResolutionPreset.high,
       enableAudio: false,
     );
-    await newController.initialize();
+    try {
+      await newController.initialize();
+    } catch (_) {
+      await newController.dispose();
+      rethrow;
+    }
     _controller = newController;
-    await previous?.dispose();
   }
 }
