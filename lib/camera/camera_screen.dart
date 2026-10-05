@@ -502,15 +502,11 @@ class _CameraBody extends StatelessWidget {
             else
               const Center(child: CircularProgressIndicator()),
 
-            // 2. Overlay Watermark Live
+            // 2. Overlay Watermark Live — ditambatkan ke frame preview
+            // (bukan layar penuh) supaya tidak keluar dari frame saat ada
+            // letterbox, dengan clearance dari HUD atas & tombol bawah.
             if (cameraReady && controller != null)
-              LiveWatermarkOverlay(
-                location: liveLocation,
-                address: liveAddress,
-                mapThumbnailBytes: liveMap?.imageBytes,
-                previewScale: previewScale,
-                previewAreaSize: constraints.biggest,
-              ),
+              _buildLiveWatermark(context, constraints, controller!, previewScale),
 
             // 3. Zoom Ruler
             if (cameraReady && maxZoom > minZoom)
@@ -592,6 +588,61 @@ class _CameraBody extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  /// Tinggi blok HUD atas di bawah status bar (padding vertikal 8 + tinggi
+  /// tombol 48 + padding 8) dan jarak napas ke watermark.
+  static const _hudHeight = 64.0;
+  static const _controlsGap = 8.0;
+
+  /// Tinggi area dari tepi bawah layar yang dipakai baris tombol kontrol
+  /// (offset 32 + diameter shutter 72) dan jarak napas.
+  static const _bottomControlsHeight = 32.0 + 72.0 + _controlsGap;
+
+  Widget _buildLiveWatermark(
+    BuildContext context,
+    BoxConstraints constraints,
+    CameraController controller,
+    double previewScale,
+  ) {
+    // Frame preview: `FixedCameraPreview` memakai AspectRatio(1/aspectRatio)
+    // yang ditengahkan di Stack.
+    final aspect = 1 / controller.value.aspectRatio;
+    var width = constraints.maxWidth;
+    var height = width / aspect;
+    if (height > constraints.maxHeight) {
+      height = constraints.maxHeight;
+      width = height * aspect;
+    }
+    final rect = Rect.fromLTWH(
+      (constraints.maxWidth - width) / 2,
+      (constraints.maxHeight - height) / 2,
+      width,
+      height,
+    );
+
+    final hudBottom = MediaQuery.paddingOf(context).top + _hudHeight + _controlsGap;
+    final controlsTop = constraints.maxHeight - _bottomControlsHeight;
+    final topClearance = (hudBottom - rect.top).clamp(0.0, double.infinity);
+    final bottomClearance = (rect.bottom - controlsTop).clamp(0.0, double.infinity);
+
+    return Positioned.fromRect(
+      rect: rect,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          LiveWatermarkOverlay(
+            location: liveLocation,
+            address: liveAddress,
+            mapThumbnailBytes: liveMap?.imageBytes,
+            previewScale: previewScale,
+            previewAreaSize: constraints.biggest,
+            topClearance: topClearance,
+            bottomClearance: bottomClearance,
+          ),
+        ],
+      ),
     );
   }
 

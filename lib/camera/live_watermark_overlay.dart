@@ -27,12 +27,6 @@ const _finalInnerPadding = 14.0;
 /// ulang dan masih kurang/lebih pas.
 const _liveScaleCalibration = 1.8;
 
-/// Jarak tambahan dari tepi bawah layar untuk watermark yang jatuh di sisi
-/// fisik bawah, supaya tidak tumpang-tindih dengan baris tombol kontrol
-/// (shutter + switch kamera) yang selalu ada di fisik-bawah-tengah layar:
-/// offset tombol dari tepi (24) + diameter tombol shutter (72) + jarak napas.
-const _bottomControlsClearance = 112.0;
-
 /// Lebar maksimum panel saat portrait (device tidak dimiringkan) — dipilih
 /// pas untuk lebar layar portrait, JANGAN diubah (sudah dikonfirmasi user
 /// pas apa adanya).
@@ -71,6 +65,8 @@ class LiveWatermarkOverlay extends StatelessWidget {
     required this.mapThumbnailBytes,
     required this.previewScale,
     required this.previewAreaSize,
+    this.topClearance = 0,
+    this.bottomClearance = 0,
   });
 
   final LocationSnapshot? location;
@@ -81,6 +77,15 @@ class LiveWatermarkOverlay extends StatelessWidget {
   /// dipakai untuk menghitung lebar maksimum panel saat landscape (lihat
   /// `_landscapeMaxWidthFraction`).
   final Size previewAreaSize;
+
+  /// Jarak tambahan dari tepi ATAS/BAWAH frame preview untuk watermark yang
+  /// jatuh di sisi fisik tersebut, supaya tidak tumpang-tindih dengan HUD
+  /// atas (pill GPS + tombol pengaturan) atau baris tombol bawah (galeri +
+  /// shutter + switch kamera). Dihitung pemanggil dari seberapa jauh kontrol
+  /// itu benar-benar menjorok ke dalam frame preview. Overlay ini harus
+  /// ditempatkan di dalam `Stack` yang berukuran sama dengan frame preview.
+  final double topClearance;
+  final double bottomClearance;
 
   /// Faktor skala dari "1 piksel resolusi asli kamera" ke "1 logical pixel
   /// di layar" (lihat `_CameraBody._previewScale`). Dikalikan ke semua
@@ -237,10 +242,10 @@ class LiveWatermarkOverlay extends StatelessWidget {
             : ScreenEdge.bottom,
         quarterTurns: quarterTurns,
         margin: margin,
-        // Cuma dipakai kalau sisi target ini memang berakhir di fisik-bawah
-        // (lihat `EdgeAnchoredRotated`) — supaya tidak tumpang-tindih dengan
-        // baris tombol shutter/switch kamera yang selalu di fisik-bawah.
-        extraBottomMargin: _bottomControlsClearance,
+        // Cuma dipakai kalau sisi target ini memang berakhir di fisik-atas
+        // / fisik-bawah (lihat `EdgeAnchoredRotated`).
+        extraTopMargin: topClearance,
+        extraBottomMargin: bottomClearance,
         child: panelWithBadge,
       );
     }
@@ -248,8 +253,8 @@ class LiveWatermarkOverlay extends StatelessWidget {
     // Posisi sudut (topLeft/topRight/bottomLeft/bottomRight): tetap menempel
     // di sudut fisik yang sama, cuma kontennya yang berputar di tempat.
     return Positioned(
-      top: _isTop(config.position) ? margin : null,
-      bottom: _isTop(config.position) ? null : margin,
+      top: _isTop(config.position) ? margin + topClearance : null,
+      bottom: _isTop(config.position) ? null : margin + bottomClearance,
       left: _isRightAligned(config.position) ? null : margin,
       right: _isRightAligned(config.position) ? margin : null,
       child: RotatedBox(quarterTurns: quarterTurns, child: panelWithBadge),

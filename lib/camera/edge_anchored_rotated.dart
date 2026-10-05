@@ -28,6 +28,7 @@ class EdgeAnchoredRotated extends StatelessWidget {
     required this.quarterTurns,
     required this.margin,
     required this.child,
+    this.extraTopMargin = 0,
     this.extraBottomMargin = 0,
   });
 
@@ -35,6 +36,11 @@ class EdgeAnchoredRotated extends StatelessWidget {
   final int quarterTurns;
   final double margin;
   final Widget child;
+
+  /// Seperti [extraBottomMargin], tapi untuk sisi fisik atas (mis. supaya
+  /// tidak tumpang-tindih dengan HUD status GPS + tombol pengaturan yang
+  /// selalu di fisik-atas layar).
+  final double extraTopMargin;
 
   /// Jarak tambahan yang HANYA diterapkan saat sisi fisik yang dipakai
   /// akhirnya adalah bawah (mis. supaya tidak tumpang-tindih dengan baris
@@ -49,7 +55,7 @@ class EdgeAnchoredRotated extends StatelessWidget {
 
     switch (physicalEdge) {
       case ScreenEdge.top:
-        return Positioned(top: margin, left: 0, right: 0, child: rotated);
+        return Positioned(top: margin + extraTopMargin, left: 0, right: 0, child: rotated);
       case ScreenEdge.right:
         return Positioned(right: margin, top: 0, bottom: 0, child: rotated);
       case ScreenEdge.bottom:
