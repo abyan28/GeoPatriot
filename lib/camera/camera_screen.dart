@@ -139,6 +139,11 @@ class _CameraScreenState extends State<CameraScreen>
 
     await _syncZoomToDefault();
 
+    _listenToLocation();
+  }
+
+  /// Mulai langganan lokasi live (tidak melakukan apa-apa bila sudah aktif).
+  void _listenToLocation() {
     _locationSubscription ??= _locationService.watchSnapshot().listen(
       (snapshot) {
         if (mounted) setState(() => _liveLocation = snapshot);
@@ -148,6 +153,13 @@ class _CameraScreenState extends State<CameraScreen>
         // GPS mati/bermasalah: biarkan status tetap null, tampilkan fallback di UI.
       },
     );
+  }
+
+  /// Hentikan langganan lokasi (dipakai saat app di background supaya GPS
+  /// tidak terus menyala dan menguras baterai).
+  void _stopLocation() {
+    _locationSubscription?.cancel();
+    _locationSubscription = null;
   }
 
   /// Lokasi yang dipakai watermark: koordinat manual bila aktif, selain itu
@@ -285,9 +297,11 @@ class _CameraScreenState extends State<CameraScreen>
     if (state == AppLifecycleState.paused) {
       setState(() => _cameraReady = false);
       _cameraService.pause();
+      _stopLocation();
       WakelockPlus.disable();
     } else if (state == AppLifecycleState.resumed) {
       _resumeCamera();
+      if (_permissions?.allGranted == true) _listenToLocation();
       WakelockPlus.enable();
     }
   }
@@ -348,7 +362,7 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _locationSubscription?.cancel();
+    _stopLocation();
     _savedBannerTimer?.cancel();
     _cameraService.dispose();
     _captureController.dispose();

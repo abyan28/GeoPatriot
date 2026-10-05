@@ -96,6 +96,11 @@ class CaptureController extends ChangeNotifier {
     } on LocationAccessException catch (e) {
       errorMessage = e.userMessage;
       status = CaptureStatus.error;
+    } on GalleryPublishException catch (e) {
+      debugPrint('Gagal menyimpan ke galeri: $e');
+      await _storageService.cleanTemporaryFiles();
+      errorMessage = 'Foto tidak bisa disimpan ke galeri. Periksa izin penyimpanan dan ruang kosong, lalu coba lagi.';
+      status = CaptureStatus.error;
     } catch (e, stackTrace) {
       debugPrint('Gagal mengambil foto: $e\n$stackTrace');
       await _storageService.cleanTemporaryFiles();

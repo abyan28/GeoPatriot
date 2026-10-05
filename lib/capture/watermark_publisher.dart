@@ -14,6 +14,7 @@ import '../geocoding/models/address_snapshot.dart';
 import '../history/models/history_entry.dart';
 import '../history/photo_history_service.dart';
 import '../location/models/location_snapshot.dart';
+import '../map/models/map_snapshot.dart';
 import '../map/map_thumbnail_provider.dart';
 import '../storage/photo_storage_service.dart';
 import '../watermark/models/watermark_configuration.dart';
@@ -52,6 +53,9 @@ class WatermarkPublisher {
   final WatermarkRenderer _watermarkRenderer;
   final ExifWriter _exifWriter;
 
+  /// Batas waktu geocoding/peta sebelum dianggap tidak tersedia (offline).
+  static const _onlineTimeout = Duration(seconds: 5);
+
   /// Cache bytes ikon aplikasi (untuk header watermark) supaya cuma dimuat
   /// sekali dari asset bundle, bukan setiap foto.
   Uint8List? _appIconBytes;
@@ -83,19 +87,26 @@ class WatermarkPublisher {
     required DateTime timestamp,
     required bool publishOriginal,
   }) async {
-    final address = await fetchSafely(
-      () => _geocodingProvider.reverseGeocode(latitude: location.latitude, longitude: location.longitude),
-    );
     final config = _watermarkConfigProvider();
-    final map = config.showMapThumbnail
-        ? await fetchSafely(
+    // Geocoding dan peta dijalankan bersamaan dengan batas waktu pendek, jadi
+    // di sinyal buruk/offline capture menunggu paling lama ±[_onlineTimeout],
+    // bukan dua kali berturut-turut.
+    final addressFuture = fetchSafely(
+      () => _geocodingProvider.reverseGeocode(latitude: location.latitude, longitude: location.longitude),
+      timeout: _onlineTimeout,
+    );
+    final mapFuture = config.showMapThumbnail
+        ? fetchSafely(
             () => _mapThumbnailProvider.fetchThumbnail(
               latitude: location.latitude,
               longitude: location.longitude,
               zoom: config.mapZoom,
             ),
+            timeout: _onlineTimeout,
           )
-        : null;
+        : Future<MapSnapshot?>.value(null);
+    final address = await addressFuture;
+    final map = await mapFuture;
 
     final watermarkData = WatermarkData(
       location: location,
@@ -120,7 +131,7 @@ class WatermarkPublisher {
 
     await _writeExifSafely(stagingProcessed, location, timestamp);
 
-    final processedFile = await _storageService.publishProcessedToGallery(stagingProcessed, baseName: baseName);
+    final processedFile = await _publishProcessedWithRetry(stagingProcessed, baseName);
 
     final File originalFile;
     if (publishOriginal) {
@@ -149,6 +160,21 @@ class WatermarkPublisher {
       address: address,
       map: map,
     );
+  }
+
+  /// Publikasikan foto processed ke galeri; coba sekali lagi bila gagal
+  /// (mis. izin galeri baru saja diberikan), lalu lempar
+  /// [GalleryPublishException] agar pemanggil bisa memberi pesan yang jelas.
+  Future<File> _publishProcessedWithRetry(File stagingProcessed, String baseName) async {
+    try {
+      return await _storageService.publishProcessedToGallery(stagingProcessed, baseName: baseName);
+    } catch (_) {
+      try {
+        return await _storageService.publishProcessedToGallery(stagingProcessed, baseName: baseName);
+      } catch (e) {
+        throw GalleryPublishException(e);
+      }
+    }
   }
 
   /// Tulis EXIF ke file processed; kegagalan apa pun (mis. keterbatasan
@@ -197,4 +223,15 @@ Future<Uint8List> _renderWatermarkInIsolate(_WatermarkRenderPayload payload) asy
     config: payload.config,
     appIconBytes: payload.appIconBytes,
   );
+}
+
+/// Foto sudah dirender tetapi gagal disimpan ke galeri (izin ditolak,
+/// penyimpanan penuh, dll).
+class GalleryPublishException implements Exception {
+  GalleryPublishException(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'GalleryPublishException: $cause';
 }

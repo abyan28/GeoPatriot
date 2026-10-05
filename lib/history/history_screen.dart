@@ -57,7 +57,7 @@ class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserv
   /// Muat ulang daftar riwayat foto dari index lokal, membuang entri yang
   /// fotonya sudah tidak ada di penyimpanan.
   Future<void> _loadEntries() async {
-    final entries = await _historyService.pruneMissing(await _historyService.loadAll());
+    final entries = await _historyService.pruneMissing();
     if (!mounted) return;
     setState(() {
       _entries = entries;
@@ -359,7 +359,7 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> with Widgets
 
   Future<void> _dropMissingEntries() async {
     final currentName = _entries.isEmpty ? null : _current.baseName;
-    final kept = await _historyService.pruneMissing(List.of(_entries));
+    final kept = await _historyService.pruneMissing();
     if (!mounted || kept.length == _entries.length) return;
     if (kept.isEmpty) {
       Navigator.of(context).pop();

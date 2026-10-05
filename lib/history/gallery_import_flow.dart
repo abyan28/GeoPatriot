@@ -120,6 +120,8 @@ Future<int> importFromGallery(
     } catch (e) {
       debugPrint('Gagal memproses foto galeri: $e');
       failed++;
+    } finally {
+      await storageService.deletePickerCopy(file.path);
     }
     progress.value++;
   }

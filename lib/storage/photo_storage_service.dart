@@ -34,6 +34,10 @@ class PhotoStorageService {
   /// platform lain.
   static const _publicPicturesPath = '/storage/emulated/0/Pictures';
 
+  /// Path folder Pictures publik (dipakai juga oleh `PhotoHistoryService`
+  /// untuk menilai apakah penyimpanan publik terbaca).
+  static const publicPicturesPath = _publicPicturesPath;
+
   Future<Directory> _folder(String name) async {
     final documentsDir = await getApplicationDocumentsDirectory();
     final dir = Directory('${documentsDir.path}/GeotagCamera/$name');
@@ -61,9 +65,34 @@ class PhotoStorageService {
     } catch (_) {}
   }
 
+  /// Pola nama folder salinan sementara milik `image_picker`
+  /// (`cache/<uuid>/<nama file>`).
+  static final _uuidDirPattern = RegExp(r'^[0-9a-fA-F-]{32,36}$');
+  static const _imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.heic'];
+
+  /// Hapus salinan sementara foto yang dipilih lewat `image_picker` setelah
+  /// selesai diproses. Hanya menghapus bila [path] berada di direktori cache
+  /// aplikasi — jangan pernah menyentuh file asli milik pengguna di galeri.
+  Future<void> deletePickerCopy(String path) async {
+    try {
+      final cacheDir = await getTemporaryDirectory();
+      if (!path.startsWith(cacheDir.path)) return;
+      await deleteQuietly(path);
+      final parent = File(path).parent;
+      if (parent.path != cacheDir.path && _uuidDirPattern.hasMatch(parent.uri.pathSegments.where((s) => s.isNotEmpty).last)) {
+        try {
+          await parent.delete();
+        } catch (_) {
+          // Folder tidak kosong: biarkan.
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Bersihkan sisa file sementara: folder staging (sisa capture yang gagal
-  /// di tengah) dan file JPEG hasil `takePicture` di direktori cache yang
-  /// tidak pernah dihapus oleh versi lama. Dipanggil saat startup.
+  /// di tengah), file JPEG hasil `takePicture` di direktori cache yang
+  /// tidak pernah dihapus oleh versi lama, dan folder salinan `image_picker`.
+  /// Dipanggil saat startup.
   Future<void> cleanTemporaryFiles() async {
     try {
       for (final name in [_originalStagingFolderName, _processedStagingFolderName]) {
@@ -76,8 +105,24 @@ class PhotoStorageService {
       await for (final entity in cacheDir.list()) {
         if (entity is File && entity.path.toLowerCase().endsWith('.jpg')) {
           await deleteQuietly(entity.path);
+        } else if (entity is Directory) {
+          await _deleteIfPickerCopyDir(entity);
         }
       }
+    } catch (_) {}
+  }
+
+  /// Hapus [dir] bila bentuknya folder salinan `image_picker`: nama berupa
+  /// UUID dan isinya hanya file gambar.
+  Future<void> _deleteIfPickerCopyDir(Directory dir) async {
+    final name = dir.uri.pathSegments.where((s) => s.isNotEmpty).last;
+    if (!_uuidDirPattern.hasMatch(name)) return;
+    try {
+      final children = await dir.list().toList();
+      final onlyImages = children.every(
+        (e) => e is File && _imageExtensions.any(e.path.toLowerCase().endsWith),
+      );
+      if (onlyImages) await dir.delete(recursive: true);
     } catch (_) {}
   }
 

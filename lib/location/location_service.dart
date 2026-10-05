@@ -28,6 +28,11 @@ class LocationAccessException implements Exception {
 /// Membungkus `geolocator` supaya layer lain (UI, capture) tidak bergantung
 /// langsung pada tipe/plugin lokasi tertentu.
 class LocationService {
+  /// Umur maksimum "lokasi terakhir yang diketahui" yang masih boleh dipakai
+  /// bila fix GPS baru tidak didapat. Lebih tua dari ini dianggap tidak ada
+  /// lokasi (daripada menampilkan tempat lama yang bisa jauh dari lokasi foto).
+  static const _maxLastKnownAge = Duration(minutes: 2);
+
   /// Pastikan GPS aktif dan izin lokasi sudah diberikan. Melempar
   /// [LocationAccessException] dengan pesan yang jujur ke pengguna jika
   /// salah satu syarat tidak terpenuhi.
@@ -65,7 +70,8 @@ class LocationService {
   /// jika timeout, fallback ke [lastKnown] dan tandai sebagai stale.
   Future<LocationSnapshot> freezeSnapshot({
     Position? lastKnown,
-    Duration timeout = const Duration(seconds: 5),
+    // 10 dtk: tanpa internet (A-GPS), fix pertama bisa lebih lama.
+    Duration timeout = const Duration(seconds: 10),
   }) async {
     await ensureAccessible();
 
@@ -76,7 +82,7 @@ class LocationService {
       return _toSnapshot(position, isStale: false);
     } on Exception {
       final fallback = lastKnown ?? await Geolocator.getLastKnownPosition();
-      if (fallback != null) {
+      if (fallback != null && DateTime.now().difference(fallback.timestamp).abs() <= _maxLastKnownAge) {
         return _toSnapshot(fallback, isStale: true);
       }
       return LocationSnapshot(
