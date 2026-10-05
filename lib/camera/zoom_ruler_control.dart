@@ -12,6 +12,14 @@ import 'package:flutter/material.dart';
 /// ditampilkan buta tanpa memandang kemampuan device.
 const _zoomStopCandidates = [0.5, 1.0, 2.0, 3.0, 5.0, 10.0];
 
+/// Zoom awal saat kamera dibuka: 1x (lensa utama), dijepit ke rentang device.
+/// Bukan [minZoom] — di HP multi-lensa minZoom adalah ultra-wide (mis. 0.6x),
+/// yang kualitasnya lebih rendah dan bukan kebiasaan aplikasi kamera pada
+/// umumnya. Kamera yang tidak bisa sampai 1x (maxZoom < 1) memakai maxZoom.
+double defaultZoomFor({required double minZoom, required double maxZoom}) {
+  return 1.0.clamp(minZoom, maxZoom);
+}
+
 /// Logika murni (bukan widget) untuk kontrol zoom ruler: menghitung stop
 /// mana yang relevan untuk [minZoom]/[maxZoom] milik device, dan konversi
 /// dua arah antara nilai zoom dan posisi relatif (0.0-1.0) di sepanjang

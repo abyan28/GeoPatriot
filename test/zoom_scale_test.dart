@@ -42,4 +42,18 @@ void main() {
     expect(scale.nearestStop(2.6), 3.0);
     expect(scale.nearestStop(4.9), 5.0);
   });
+
+  group('defaultZoomFor', () {
+    test('HP multi-lensa (min 0.6) mulai di 1x, bukan ultra-wide', () {
+      expect(defaultZoomFor(minZoom: 0.6, maxZoom: 10), 1.0);
+    });
+
+    test('kamera tanpa ultra-wide (min 1) tetap 1x', () {
+      expect(defaultZoomFor(minZoom: 1, maxZoom: 4), 1.0);
+    });
+
+    test('dijepit ke maxZoom bila kamera tidak bisa sampai 1x', () {
+      expect(defaultZoomFor(minZoom: 0.5, maxZoom: 0.8), 0.8);
+    });
+  });
 }

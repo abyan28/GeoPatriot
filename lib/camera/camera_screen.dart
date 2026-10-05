@@ -125,15 +125,7 @@ class _CameraScreenState extends State<CameraScreen>
     // aplikasi kamera pada umumnya.
     await WakelockPlus.enable();
 
-    final minZoom = await _cameraService.getMinZoomLevel();
-    final maxZoom = await _cameraService.getMaxZoomLevel();
-    if (mounted) {
-      setState(() {
-        _minZoom = minZoom;
-        _maxZoom = maxZoom;
-        _currentZoom = minZoom;
-      });
-    }
+    await _syncZoomToDefault();
 
     _locationSubscription = _locationService.watchSnapshot().listen(
       (snapshot) {
@@ -226,6 +218,24 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  /// Baca rentang zoom kamera yang sedang aktif lalu set zoom ke 1x (lihat
+  /// [defaultZoomFor]) — di kamera DAN di state UI, supaya indikator ruler
+  /// selalu sama dengan zoom sebenarnya. Dipanggil setiap controller baru
+  /// dibuat (awal, switch kamera, resume), karena controller baru selalu
+  /// mulai dari zoom bawaan.
+  Future<void> _syncZoomToDefault() async {
+    final minZoom = await _cameraService.getMinZoomLevel();
+    final maxZoom = await _cameraService.getMaxZoomLevel();
+    final zoom = defaultZoomFor(minZoom: minZoom, maxZoom: maxZoom);
+    await _cameraService.setZoomLevel(zoom);
+    if (!mounted) return;
+    setState(() {
+      _minZoom = minZoom;
+      _maxZoom = maxZoom;
+      _currentZoom = zoom;
+    });
+  }
+
   /// Minta izin kamera/lokasi yang belum diberikan, lalu mulai kamera dan
   /// lokasi jika semuanya sudah lengkap setelah diminta.
   Future<void> _requestMissingPermissions() async {
@@ -265,8 +275,10 @@ class _CameraScreenState extends State<CameraScreen>
       _cameraService.pause();
       WakelockPlus.disable();
     } else if (state == AppLifecycleState.resumed) {
-      _cameraService.resume().then((_) {
-        if (mounted) setState(() => _cameraReady = true);
+      _cameraService.resume().then((_) async {
+        if (!mounted) return;
+        setState(() => _cameraReady = true);
+        if (_cameraService.isInitialized) await _syncZoomToDefault();
       });
       WakelockPlus.enable();
     }
@@ -290,15 +302,9 @@ class _CameraScreenState extends State<CameraScreen>
     if (!mounted) return;
 
     final ready = _cameraService.isInitialized;
-    final minZoom = ready ? await _cameraService.getMinZoomLevel() : 1.0;
-    final maxZoom = ready ? await _cameraService.getMaxZoomLevel() : 1.0;
+    if (ready) await _syncZoomToDefault();
     if (!mounted) return;
-    setState(() {
-      _cameraReady = ready;
-      _minZoom = minZoom;
-      _maxZoom = maxZoom;
-      _currentZoom = minZoom;
-    });
+    setState(() => _cameraReady = ready);
     if (errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
     }
