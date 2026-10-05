@@ -13,6 +13,7 @@ import '../core/permissions/app_permissions.dart';
 import '../geocoding/cached_geocoding_provider.dart';
 import '../geocoding/locationiq_geocoding_provider.dart';
 import '../geocoding/models/address_snapshot.dart';
+import '../history/gallery_import_flow.dart';
 import '../history/photo_history_service.dart';
 import '../location/location_service.dart';
 import '../location/models/location_snapshot.dart';
@@ -153,6 +154,19 @@ class _CameraScreenState extends State<CameraScreen>
       return manual.toLocationSnapshot(capturedAt: manual.timestamp ?? DateTime.now());
     }
     return _liveLocation;
+  }
+
+  /// Pilih foto dari galeri HP lalu beri watermark (lihat [importFromGallery]).
+  /// Memakai provider geocoding/peta milik layar ini supaya cache terbagi.
+  Future<void> _addFromGallery() async {
+    await importFromGallery(
+      context,
+      settings: context.read<SettingsController>(),
+      historyService: PhotoHistoryService(),
+      storageService: PhotoStorageService(),
+      geocodingProvider: _geocodingProvider,
+      mapThumbnailProvider: _mapThumbnailProvider,
+    );
   }
 
   /// Buka sheet input manual, terapkan hasilnya, lalu muat ulang alamat dan
@@ -380,6 +394,7 @@ class _CameraScreenState extends State<CameraScreen>
                   manualTimestamp: _manualOverride?.timestamp,
                   manualActive: _manualOverride != null,
                   onOpenManualOverride: _openManualOverride,
+                  onAddFromGallery: _addFromGallery,
                   liveAddress: _liveAddress,
                   liveMap: _liveMap,
                   showSavedBanner: _showSavedBanner,
@@ -486,6 +501,7 @@ class _CameraBody extends StatelessWidget {
     required this.manualTimestamp,
     required this.manualActive,
     required this.onOpenManualOverride,
+    required this.onAddFromGallery,
     required this.liveAddress,
     required this.liveMap,
     required this.showSavedBanner,
@@ -510,6 +526,7 @@ class _CameraBody extends StatelessWidget {
   final DateTime? manualTimestamp;
   final bool manualActive;
   final VoidCallback onOpenManualOverride;
+  final VoidCallback onAddFromGallery;
   final AddressSnapshot? liveAddress;
   final MapSnapshot? liveMap;
   final bool showSavedBanner;
@@ -599,6 +616,19 @@ class _CameraBody extends StatelessWidget {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          _RotatedControl(
+                            child: IconButton(
+                              tooltip: 'Tambah watermark dari galeri',
+                              style: IconButton.styleFrom(
+                                backgroundColor: CameraTokens.hudBackground,
+                                side: BorderSide(color: CameraTokens.hudBorder, width: 1),
+                                padding: const EdgeInsets.all(10),
+                              ),
+                              icon: const Icon(Icons.add_photo_alternate_outlined, color: Colors.white),
+                              onPressed: onAddFromGallery,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           _RotatedControl(
                             child: IconButton(
                               tooltip: 'Input manual koordinat & waktu',
