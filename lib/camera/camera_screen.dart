@@ -22,6 +22,7 @@ import '../map/locationiq_map_thumbnail_provider.dart';
 import '../map/models/map_snapshot.dart';
 import '../settings/settings_controller.dart';
 import '../storage/photo_storage_service.dart';
+import '../watermark/models/watermark_configuration.dart';
 import '../core/theme/camera_tokens.dart';
 import 'widgets/camera_bottom_bar.dart';
 import 'widgets/fixed_camera_preview.dart';
@@ -888,35 +889,29 @@ class _CameraBody extends StatelessWidget {
     );
   }
 
-  /// Hitung faktor skala antara "1 piksel resolusi asli kamera" dan "1
-  /// logical pixel di layar", supaya ukuran panel watermark live (dirender
-  /// dalam logical pixel Flutter) bisa dibuat SEBANDING SECARA PROPORSI
-  /// dengan panel watermark hasil foto akhir (dirender `WatermarkRenderer`
-  /// dalam piksel gambar beresolusi tinggi) — tanpa penyesuaian ini, angka
-  /// ukuran yang sama (mis. fontSize 20) akan terlihat jauh lebih besar di
-  /// preview kecil dibanding di foto beresolusi tinggi.
+  /// Faktor skala "1 satuan ukuran watermark" -> "1 logical pixel di layar",
+  /// supaya panel watermark live SEBANDING SECARA PROPORSI dengan panel pada
+  /// foto hasil. Renderer menyatakan ukuran relatif terhadap sisi pendek foto
+  /// beracuan [kWatermarkReferenceShortSide] (lihat [watermarkScaleFor]),
+  /// jadi di layar cukup lebar frame preview ÷ acuan itu — TIDAK bergantung
+  /// pada resolusi kamera, sehingga mengubah `ResolutionPreset` tidak lagi
+  /// mengecilkan/membesarkan kotak live.
   ///
-  /// `CameraPreview` membesarkan diri mengikuti `controller.value.aspectRatio`
-  /// sampai sebesar mungkin di area yang tersedia (pola containment-fit
-  /// `AspectRatio` standar), jadi rasio (lebar preview di layar ÷
-  /// `previewSize.width`) adalah faktor skala yang konsisten, terlepas dari
-  /// orientasi sensor vs layar.
+  /// Lebar frame preview (portrait) = lebar layar, kecuali area terlalu
+  /// pendek sehingga frame dibatasi tinggi (`FixedCameraPreview` memakai
+  /// AspectRatio standar).
   double _previewScale(
     BoxConstraints constraints,
     CameraController? controller,
   ) {
-    final previewSize = controller?.value.previewSize;
-    if (controller == null || previewSize == null || previewSize.width <= 0) {
-      return 1.0;
-    }
+    if (controller == null) return 1.0;
 
-    final aspectRatio = controller.value.aspectRatio;
-    final onScreenWidth =
-        constraints.maxWidth / constraints.maxHeight > aspectRatio
-        ? constraints.maxHeight * aspectRatio
+    final frameAspect = 1 / controller.value.aspectRatio;
+    final onScreenWidth = constraints.maxWidth / constraints.maxHeight > frameAspect
+        ? constraints.maxHeight * frameAspect
         : constraints.maxWidth;
 
-    return onScreenWidth / previewSize.width;
+    return onScreenWidth / kWatermarkReferenceShortSide;
   }
 }
 

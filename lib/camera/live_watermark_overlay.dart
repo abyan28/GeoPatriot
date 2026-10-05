@@ -17,15 +17,12 @@ import 'edge_anchored_rotated.dart';
 /// dipakai sebagai acuan supaya padding panel live proporsional dengan hasil akhir.
 const _finalInnerPadding = 14.0;
 
-/// Kalibrasi empiris untuk `previewScale`: dari perbandingan langsung
-/// screenshot preview vs hasil foto oleh user, rumus rasio resolusi murni
-/// ternyata masih menghasilkan panel yang jauh lebih kecil dari proporsi
-/// sesungguhnya di hasil foto (awalnya `3.0`), lalu dikecilkan lagi sesuai
-/// umpan balik user di kedua orientasi ("dikecilkan 1x dari size sekarang",
-/// portrait dan landscape) jadi `3.0 * 0.6 = 1.8`. Angka ini dari pengukuran
-/// nyata (bukan turunan matematis), gampang disetel lagi kalau user uji
-/// ulang dan masih kurang/lebih pas.
-const _liveScaleCalibration = 1.8;
+/// Pengali tambahan untuk `previewScale`. `previewScale` sudah memetakan
+/// ukuran watermark (acuan sisi pendek foto 720 px) ke logical pixel layar,
+/// jadi tidak perlu kalibrasi lagi: 1.0. (Dulu 1.8, kalibrasi empiris yang
+/// diam-diam menutup selisih lebar foto 720 vs sisi panjang preview 1280 pada
+/// resolusi 720p; nilainya sama dengan perilaku lama dalam ±1,3%.)
+const _liveScaleCalibration = 1.0;
 
 /// Lebar maksimum panel saat portrait (device tidak dimiringkan) — dipilih
 /// pas untuk lebar layar portrait, JANGAN diubah (sudah dikonfirmasi user

@@ -24,18 +24,18 @@ class WatermarkRenderException implements Exception {
 /// tidak meminta GPS, tidak memanggil geocoder/map provider, tidak
 /// mengubah application state global.
 class WatermarkRenderer {
-  static const _innerPadding = 14;
+  static const _baseInnerPadding = 14;
   static const _jpegQuality = 90;
 
   /// Padding di dalam kotak lencana (badge) logo+nama aplikasi — lebih
   /// kecil dari `_innerPadding` panel utama karena badge memang dibuat
   /// ringkas ("tag" kecil), bukan sebesar panel info lokasi.
-  static const _badgePadding = 8;
+  static const _baseBadgePadding = 8;
 
   /// Berapa piksel kotak lencana logo+nama TUMPANG TINDIH ke kotak utama
   /// supaya terlihat "ditempelkan" (seperti label/tag), bukan sekadar
   /// mengambang terpisah dengan jarak kosong di antaranya.
-  static const _badgeOverlap = 6;
+  static const _baseBadgeOverlap = 6;
 
   /// Render watermark ke [sourceImageBytes] sesuai [config] dan [data].
   /// [appIconBytes] opsional (PNG/JPEG kecil) ditampilkan sebagai ikon
@@ -60,6 +60,31 @@ class WatermarkRenderer {
     // Normalisasi orientasi EXIF supaya piksel sesuai tampilan portrait/landscape asli.
     final oriented = img.bakeOrientation(source);
 
+    // Semua ukuran watermark diskalakan terhadap resolusi foto (acuan 720 px
+    // sisi pendek), supaya kotaknya tidak mengecil saat resolusi dinaikkan.
+    final scale = watermarkScaleFor(oriented.width, oriented.height);
+    return _renderOnImage(
+      oriented,
+      data: data,
+      config: config.scaledBy(scale),
+      appIconBytes: appIconBytes,
+      scale: scale,
+    );
+  }
+
+  /// Gambar watermark ke [oriented] memakai [config] yang SUDAH diskalakan
+  /// dengan faktor [scale] (padding internal ikut dikalikan [scale]).
+  Uint8List _renderOnImage(
+    img.Image oriented, {
+    required WatermarkData data,
+    required WatermarkConfiguration config,
+    required Uint8List? appIconBytes,
+    required double scale,
+  }) {
+    final innerPadding = (_baseInnerPadding * scale).round();
+    final badgePadding = (_baseBadgePadding * scale).round();
+    final badgeOverlap = (_baseBadgeOverlap * scale).round();
+
     // Peta bersifat opsional: bytes yang tidak bisa didekode (bukan gambar
     // valid) cukup dilewati, tidak boleh menggagalkan seluruh foto.
     final mapImage = config.showMapThumbnail ? _decodeMapSafely(data) : null;
@@ -70,7 +95,7 @@ class WatermarkRenderer {
 
     final thumbnailSize = showThumbnail ? config.thumbnailSize.round() : 0;
     final thumbnailReservedWidth = showThumbnail ? thumbnailSize + config.spacing.round() : 0;
-    final maxTextWidth = oriented.width - 2 * config.margin.round() - 2 * _innerPadding - thumbnailReservedWidth;
+    final maxTextWidth = oriented.width - 2 * config.margin.round() - 2 * innerPadding - thumbnailReservedWidth;
 
     // Wrap tiap baris memakai font-nya sendiri (judul lebih besar dari body),
     // supaya batas karakter per baris sesuai lebar huruf yang sebenarnya dipakai.
@@ -90,8 +115,8 @@ class WatermarkRenderer {
     final lineHeights = rendered.map((line) => _lineHeightFor(line.font) + config.spacing.round()).toList();
     final textBlockHeight = lineHeights.fold<int>(0, (sum, height) => sum + height);
     final contentHeight = showThumbnail ? (thumbnailSize > textBlockHeight ? thumbnailSize : textBlockHeight) : textBlockHeight;
-    final panelHeight = contentHeight + 2 * _innerPadding;
-    final panelWidth = thumbnailReservedWidth + textBlockWidth + 2 * _innerPadding;
+    final panelHeight = contentHeight + 2 * innerPadding;
+    final panelWidth = thumbnailReservedWidth + textBlockWidth + 2 * innerPadding;
 
     final panelOrigin = _panelOrigin(
       imageWidth: oriented.width,
@@ -112,10 +137,12 @@ class WatermarkRenderer {
       panelWidth: panelWidth,
       panelHeight: panelHeight,
       imageHeight: oriented.height,
+      badgePadding: badgePadding,
+      badgeOverlap: badgeOverlap,
     );
 
-    var textX = panelOrigin.dx + _innerPadding;
-    final textY = panelOrigin.dy + _innerPadding;
+    var textX = panelOrigin.dx + innerPadding;
+    final textY = panelOrigin.dy + innerPadding;
 
     if (showThumbnail) {
       final resizedMap = img.copyResize(
@@ -284,6 +311,8 @@ class WatermarkRenderer {
     required int panelWidth,
     required int panelHeight,
     required int imageHeight,
+    required int badgePadding,
+    required int badgeOverlap,
   }) {
     final font = _fontFor(config.fontSize);
     final iconSize = (config.fontSize * 1.1).round();
@@ -301,21 +330,21 @@ class WatermarkRenderer {
     final rowWidth = iconReservedWidth + textWidth;
     final rowHeight = icon != null ? (iconSize > _lineHeightFor(font) ? iconSize : _lineHeightFor(font)) : _lineHeightFor(font);
 
-    final badgeWidth = rowWidth + 2 * _badgePadding;
-    final badgeHeight = rowHeight + 2 * _badgePadding;
+    final badgeWidth = rowWidth + 2 * badgePadding;
+    final badgeHeight = rowHeight + 2 * badgePadding;
 
     // Rata kanan terhadap panel utama, menempel di sisi yang menjauhi tepi
     // gambar terdekat (lihat dokumentasi method).
     final badgeX = (panelOrigin.dx + panelWidth - badgeWidth).clamp(0, image.width - badgeWidth);
     final attachAbovePanel = panelOrigin.dy > (imageHeight / 2);
     final badgeY = attachAbovePanel
-        ? (panelOrigin.dy - badgeHeight + _badgeOverlap).clamp(0, image.height - badgeHeight)
-        : (panelOrigin.dy + panelHeight - _badgeOverlap).clamp(0, image.height - badgeHeight);
+        ? (panelOrigin.dy - badgeHeight + badgeOverlap).clamp(0, image.height - badgeHeight)
+        : (panelOrigin.dy + panelHeight - badgeOverlap).clamp(0, image.height - badgeHeight);
 
     _drawPanel(image, badgeX, badgeY, badgeWidth, badgeHeight, config);
 
-    final rowX = badgeX + _badgePadding;
-    final rowY = badgeY + _badgePadding;
+    final rowX = badgeX + badgePadding;
+    final rowY = badgeY + badgePadding;
     if (icon != null) {
       final iconY = rowY + (rowHeight - iconSize) ~/ 2;
       img.compositeImage(image, icon, dstX: rowX, dstY: iconY);
@@ -334,8 +363,10 @@ class WatermarkRenderer {
   /// Pilih bitmap font bawaan `image` package yang paling mendekati ukuran
   /// font yang diminta konfigurasi.
   img.BitmapFont _fontFor(double fontSize) {
-    if (fontSize <= 16) return img.arial14;
-    if (fontSize <= 30) return img.arial24;
+    // Ambang di tengah (geometrik) antar ukuran bitmap 14/24/48 karena
+    // [fontSize] sudah diskalakan terhadap resolusi foto.
+    if (fontSize <= 18) return img.arial14;
+    if (fontSize <= 34) return img.arial24;
     return img.arial48;
   }
 

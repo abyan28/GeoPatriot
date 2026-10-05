@@ -125,6 +125,48 @@ void main() {
     expect(img.decodeJpg(result), isNotNull);
   });
 
+  test('ukuran panel proporsional terhadap lebar foto di resolusi berbeda', () {
+    // Sebelumnya ukuran watermark piksel absolut, jadi di foto 1080 lebar
+    // panelnya hanya ~0,67x porsi di foto 720. Sekarang harus sebanding.
+    double panelWidthFraction(int width, int height) {
+      final data = WatermarkData(
+        location: _sampleLocation(),
+        timestamp: DateTime(2026, 3, 5, 14, 30),
+        timeZoneName: 'WIB',
+      );
+      final result = renderer.render(
+        sourceImageBytes: _fakeJpeg(width, height),
+        data: data,
+        config: WatermarkConfiguration.defaultTemplate(),
+      );
+      final decoded = img.decodeJpg(result)!;
+      var minX = decoded.width;
+      var maxX = -1;
+      for (final pixel in decoded) {
+        // Latar foto uji terang (~140); panel hitam semi-transparan jauh lebih gelap.
+        if (pixel.luminance < 90) {
+          if (pixel.x < minX) minX = pixel.x;
+          if (pixel.x > maxX) maxX = pixel.x;
+        }
+      }
+      expect(maxX, greaterThan(minX), reason: 'panel tidak terdeteksi');
+      return (maxX - minX + 1) / decoded.width;
+    }
+
+    final at720 = panelWidthFraction(720, 1280);
+    final at1080 = panelWidthFraction(1080, 1920);
+
+    expect(at1080 / at720, inInclusiveRange(0.85, 1.2));
+  });
+
+  test('watermarkScaleFor memakai sisi pendek dan dijepit 0,5-4', () {
+    expect(watermarkScaleFor(720, 1280), 1.0);
+    expect(watermarkScaleFor(1080, 1920), 1.5);
+    expect(watermarkScaleFor(1920, 1080), 1.5);
+    expect(watermarkScaleFor(100, 100), 0.5);
+    expect(watermarkScaleFor(9000, 12000), 4.0);
+  });
+
   test('resolusi kecil tetap dapat dirender tanpa exception', () {
     final data = WatermarkData(
       location: _sampleLocation(),

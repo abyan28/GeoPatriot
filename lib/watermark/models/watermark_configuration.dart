@@ -128,6 +128,17 @@ class WatermarkConfiguration {
         mapZoom: 17,
       );
 
+  /// Salinan dengan semua ukuran piksel (font, thumbnail, margin, sudut,
+  /// spasi) dikalikan [factor]. Dipakai renderer agar ukuran watermark
+  /// proporsional terhadap resolusi foto (lihat [watermarkScaleFor]).
+  WatermarkConfiguration scaledBy(double factor) => copyWith(
+        fontSize: fontSize * factor,
+        thumbnailSize: thumbnailSize * factor,
+        margin: margin * factor,
+        cornerRadius: cornerRadius * factor,
+        spacing: spacing * factor,
+      );
+
   /// Buat salinan konfigurasi dengan field tertentu diganti, dipakai layar
   /// Settings saat pengguna mengubah satu opsi.
   WatermarkConfiguration copyWith({
@@ -232,4 +243,20 @@ class WatermarkConfiguration {
       // — selalu pakai default terbaru dari kode.
     );
   }
+}
+
+/// Sisi pendek foto (dalam piksel) yang menjadi acuan desain ukuran
+/// watermark: semua angka di [WatermarkConfiguration] (font 14, thumbnail 160,
+/// margin 16, ...) adalah ukuran untuk foto selebar 720 px. Foto beresolusi
+/// lebih tinggi memakai faktor [watermarkScaleFor] supaya kotak watermark
+/// menempati porsi foto yang sama, tidak mengecil saat resolusi dinaikkan.
+const kWatermarkReferenceShortSide = 720.0;
+
+/// Faktor pengali ukuran watermark untuk foto berukuran [imageWidth] x
+/// [imageHeight]: sisi pendek foto dibagi [kWatermarkReferenceShortSide],
+/// dijepit 0,5-4 supaya foto sangat kecil/besar tidak menghasilkan ukuran
+/// ekstrem.
+double watermarkScaleFor(int imageWidth, int imageHeight) {
+  final shortSide = imageWidth < imageHeight ? imageWidth : imageHeight;
+  return (shortSide / kWatermarkReferenceShortSide).clamp(0.5, 4.0);
 }
