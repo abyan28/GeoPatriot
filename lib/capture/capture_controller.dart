@@ -103,6 +103,7 @@ class CaptureController extends ChangeNotifier {
       final photo = await _cameraService.takePicture();
       final baseName = await _storageService.reserveBaseName(timestamp);
       final stagingOriginal = await _storageService.saveOriginal(photo.path, baseName: baseName);
+      await _storageService.deleteQuietly(photo.path);
 
       final address = await fetchSafely(
         () => _geocodingProvider.reverseGeocode(latitude: location.latitude, longitude: location.longitude),
@@ -178,6 +179,7 @@ class CaptureController extends ChangeNotifier {
       status = CaptureStatus.error;
     } catch (e, stackTrace) {
       debugPrint('Gagal mengambil foto: $e\n$stackTrace');
+      await _storageService.cleanTemporaryFiles();
       errorMessage = 'Gagal mengambil foto. Coba lagi.';
       status = CaptureStatus.error;
     }

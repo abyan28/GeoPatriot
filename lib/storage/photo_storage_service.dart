@@ -52,6 +52,35 @@ class PhotoStorageService {
   /// processed sebelum dipublikasikan ke galeri.
   Future<Directory> _processedStagingDirectory() => _folder(_processedStagingFolderName);
 
+  /// Hapus file di [path] bila ada; kegagalan hapus diabaikan karena ini
+  /// hanya pembersihan file sementara.
+  Future<void> deleteQuietly(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+  }
+
+  /// Bersihkan sisa file sementara: folder staging (sisa capture yang gagal
+  /// di tengah) dan file JPEG hasil `takePicture` di direktori cache yang
+  /// tidak pernah dihapus oleh versi lama. Dipanggil saat startup.
+  Future<void> cleanTemporaryFiles() async {
+    try {
+      for (final name in [_originalStagingFolderName, _processedStagingFolderName]) {
+        final dir = await _folder(name);
+        await for (final entity in dir.list()) {
+          if (entity is File) await deleteQuietly(entity.path);
+        }
+      }
+      final cacheDir = await getTemporaryDirectory();
+      await for (final entity in cacheDir.list()) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.jpg')) {
+          await deleteQuietly(entity.path);
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Lokasi akhir (prediksi) foto processed di galeri publik untuk satu
   /// [baseName].
   File _publicProcessedFileFor(String baseName) {

@@ -684,6 +684,7 @@ class _LastCaptureBanner extends StatelessWidget {
                   width: 28,
                   height: 28,
                   fit: BoxFit.cover,
+                  cacheWidth: 96,
                 ),
               ),
               const SizedBox(width: 8),

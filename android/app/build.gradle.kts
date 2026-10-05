@@ -64,6 +64,14 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+
+            // Pangkas kode Java/Kotlin & resource yang tidak terpakai.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

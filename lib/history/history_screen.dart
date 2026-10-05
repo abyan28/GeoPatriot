@@ -233,6 +233,7 @@ class _HistoryThumbnail extends StatelessWidget {
             child: Image.file(
               File(entry.processedPath),
               fit: BoxFit.cover,
+              cacheWidth: 400,
               errorBuilder: (context, error, stackTrace) => Container(
                 decoration: BoxDecoration(
                   color: Colors.grey.shade900,
@@ -439,6 +440,7 @@ class _HistoryDetailScreenState extends State<_HistoryDetailScreen> {
               child: Image.file(
                 File(_entries[index].processedPath),
                 fit: BoxFit.contain,
+                cacheWidth: 1600,
                 errorBuilder: (context, error, stackTrace) => Container(
                   padding: const EdgeInsets.all(24),
                   color: Colors.black,

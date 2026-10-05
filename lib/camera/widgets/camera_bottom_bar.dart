@@ -105,6 +105,7 @@ class _QuickGalleryButton extends StatelessWidget {
               ? Image.file(
                   file,
                   fit: BoxFit.cover,
+                  cacheWidth: 160,
                   errorBuilder: (context, error, stackTrace) =>
                       const Icon(Icons.photo_library_outlined, color: Colors.white, size: 24),
                 )
