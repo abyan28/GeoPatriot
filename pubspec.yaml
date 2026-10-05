@@ -83,6 +83,10 @@ dependencies:
   # MediaStore, supaya terlihat di aplikasi Galeri/File Manager (Fase 6 lanjutan).
   gal: ^2.3.0
 
+  # Pilih foto dari galeri (Android photo picker, tanpa izin storage) untuk
+  # fitur "tambah watermark dari galeri".
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

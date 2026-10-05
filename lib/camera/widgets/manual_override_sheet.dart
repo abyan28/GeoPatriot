@@ -7,9 +7,19 @@ import '../../capture/manual_override.dart';
 /// Ditutup dengan [ManualOverride] baru ("Terapkan"), [ManualOverride] kosong
 /// ("Kembali ke otomatis"), atau null (dismiss tanpa perubahan).
 class ManualOverrideSheet extends StatefulWidget {
-  const ManualOverrideSheet({super.key, this.initial});
+  const ManualOverrideSheet({
+    super.key,
+    this.initial,
+    this.title = 'Input manual',
+    this.description = 'Kosongkan koordinat/waktu untuk tetap memakai GPS dan jam perangkat. '
+        'Berlaku untuk foto berikutnya sampai app ditutup.',
+    this.resetLabel = 'Kembali ke otomatis',
+  });
 
   final ManualOverride? initial;
+  final String title;
+  final String description;
+  final String resetLabel;
 
   @override
   State<ManualOverrideSheet> createState() => _ManualOverrideSheetState();
@@ -83,11 +93,10 @@ class _ManualOverrideSheetState extends State<ManualOverrideSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Input manual', style: Theme.of(context).textTheme.titleLarge),
+            Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
-              'Kosongkan koordinat/waktu untuk tetap memakai GPS dan jam perangkat. '
-              'Berlaku untuk foto berikutnya sampai app ditutup.',
+              widget.description,
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 16),
@@ -138,7 +147,7 @@ class _ManualOverrideSheetState extends State<ManualOverrideSheet> {
                 Expanded(
                   child: TextButton(
                     onPressed: () => Navigator.of(context).pop(const ManualOverride()),
-                    child: const Text('Kembali ke otomatis'),
+                    child: Text(widget.resetLabel),
                   ),
                 ),
                 const SizedBox(width: 8),
