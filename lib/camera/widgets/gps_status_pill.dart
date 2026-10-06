@@ -43,6 +43,10 @@ class GpsStatusPill extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      backgroundColor: CameraTokens.navySurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) {
         final loc = location;
         return Padding(
@@ -59,12 +63,22 @@ class GpsStatusPill extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: _statusColor(),
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: _statusColor().withValues(alpha: 0.6),
+                          blurRadius: 6,
+                          spreadRadius: 1,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 10),
                   Text(
                     'Status Sensor GPS',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                   ),
                 ],
               ),
@@ -72,30 +86,44 @@ class GpsStatusPill extends StatelessWidget {
               if (loc != null) ...[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.gps_fixed),
-                  title: const Text('Kategori Akurasi'),
-                  subtitle: Text('${loc.accuracyCategory.label} (±${loc.accuracy?.round() ?? '-'} meter)'),
+                  leading: const Icon(Icons.gps_fixed, color: CameraTokens.brandOchre),
+                  title: const Text('Kategori Akurasi', style: TextStyle(color: Colors.white70)),
+                  subtitle: Text(
+                    '${loc.accuracyCategory.label} (±${loc.accuracy?.round() ?? '-'} meter)',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.my_location),
-                  title: const Text('Koordinat Terkunci'),
-                  subtitle: Text('${loc.latitude.toStringAsFixed(6)}, ${loc.longitude.toStringAsFixed(6)}'),
+                  leading: const Icon(Icons.my_location, color: CameraTokens.telemetryCyan),
+                  title: const Text('Koordinat Terkunci', style: TextStyle(color: Colors.white70)),
+                  subtitle: Text(
+                    '${loc.latitude.toStringAsFixed(6)}, ${loc.longitude.toStringAsFixed(6)}',
+                    style: const TextStyle(
+                      color: CameraTokens.telemetryCyan,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
                 ),
                 if (loc.altitude != null)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.height),
-                    title: const Text('Ketinggian (Altitude)'),
-                    subtitle: Text('${loc.altitude!.round()} m di atas permukaan laut'),
+                    leading: const Icon(Icons.height, color: CameraTokens.brandOchreLight),
+                    title: const Text('Ketinggian (Altitude)', style: TextStyle(color: Colors.white70)),
+                    subtitle: Text(
+                      '${loc.altitude!.round()} m di atas permukaan laut',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
                   ),
               ] else ...[
-                const ListTile(
+                ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.gps_not_fixed, color: Colors.amber),
-                  title: Text('Menunggu Sinyal Satelit'),
-                  subtitle: Text(
+                  leading: const Icon(Icons.gps_not_fixed, color: CameraTokens.brandOchre),
+                  title: const Text('Menunggu Sinyal Satelit', style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
                     'Pastikan GPS aktif dan berada di area terbuka untuk mendapatkan koordinat akurat.',
+                    style: TextStyle(color: Colors.white70),
                   ),
                 ),
               ],

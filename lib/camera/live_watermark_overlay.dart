@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../core/theme/camera_tokens.dart';
 import '../geocoding/address_formatter.dart';
 import '../geocoding/models/address_snapshot.dart';
 import '../location/models/location_snapshot.dart';
@@ -65,11 +66,13 @@ class LiveWatermarkOverlay extends StatelessWidget {
     this.timestampOverride,
     this.topClearance = 0,
     this.bottomClearance = 0,
+    this.onTap,
   });
 
   final LocationSnapshot? location;
   final AddressSnapshot? address;
   final Uint8List? mapThumbnailBytes;
+  final VoidCallback? onTap;
 
   /// Ukuran area preview kamera (dari `LayoutBuilder` di `_CameraBody`),
   /// dipakai untuk menghitung lebar maksimum panel saat landscape (lihat
@@ -140,21 +143,41 @@ class LiveWatermarkOverlay extends StatelessWidget {
       constraints: BoxConstraints(maxWidth: maxWidth),
       padding: EdgeInsets.all(innerPadding),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: config.opacity.clamp(0, 1)),
+        color: CameraTokens.navySurface.withValues(alpha: config.opacity.clamp(0.4, 0.95)),
         borderRadius: BorderRadius.circular(cornerRadius),
+        border: Border.all(
+          color: CameraTokens.petrolBlue.withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (showThumbnail) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6 * scale),
-              child: Image.memory(
-                mapThumbnailBytes!,
-                width: thumbnailSize,
-                height: thumbnailSize,
-                fit: BoxFit.cover,
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8 * scale),
+                border: Border.all(
+                  color: CameraTokens.petrolBlue.withValues(alpha: 0.6),
+                  width: 1.2,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(7 * scale),
+                child: Image.memory(
+                  mapThumbnailBytes!,
+                  width: thumbnailSize,
+                  height: thumbnailSize,
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
             SizedBox(width: spacing),
@@ -182,8 +205,18 @@ class LiveWatermarkOverlay extends StatelessWidget {
     final badge = Container(
       padding: EdgeInsets.all(badgePadding),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: config.opacity.clamp(0, 1)),
+        color: CameraTokens.navySurface.withValues(alpha: config.opacity.clamp(0.6, 0.95)),
         borderRadius: BorderRadius.circular(cornerRadius),
+        border: Border.all(
+          color: CameraTokens.brandOchre.withValues(alpha: 0.8),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 6,
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -199,7 +232,11 @@ class LiveWatermarkOverlay extends StatelessWidget {
           SizedBox(width: spacing),
           Text(
             config.appBrandingText,
-            style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: CameraTokens.brandOchreLight,
+              fontSize: fontSize,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -215,19 +252,15 @@ class LiveWatermarkOverlay extends StatelessWidget {
       child: badge,
     );
 
-    // PENTING: crossAxisAlignment.end (BUKAN stretch) — `stretch` memaksa
-    // Column mengambil lebar PENUH area yang tersedia (karena constraint
-    // dari `Center` di pemanggil bersifat longgar-tak-terbatas), lalu
-    // memaksa `panel` ikut selebar itu juga, MENGABAIKAN `maxWidth: 320`
-    // milik `panel` sendiri (constraint ketat dari parent selalu menang
-    // atas `maxWidth` yang dideklarasikan child) — itu sebabnya kotak
-    // watermark live sempat jadi selebar layar. `end` cuma merapatkan
-    // badge ke sisi kanan lebar Column (yang mengikuti lebar `panel`,
-    // elemen terlebar), tanpa memaksa ukuran siapa pun.
-    final panelWithBadge = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: isTopPosition ? [panel, translatedBadge] : [translatedBadge, panel],
+    // Bungkus panel & badge dengan GestureDetector jika ada handler tap
+    final panelWithBadge = GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: isTopPosition ? [panel, translatedBadge] : [translatedBadge, panel],
+      ),
     );
 
     // Posisi tengah (top/bottom, kasus default): pakai EdgeAnchoredRotated
@@ -287,25 +320,42 @@ class LiveWatermarkOverlay extends StatelessWidget {
   }) {
     final widgets = <Widget>[];
     final formatter = AddressFormatter();
-    final bodyStyle = TextStyle(color: Colors.white, fontSize: fontSize);
+    final bodyStyle = TextStyle(
+      color: Colors.white.withValues(alpha: 0.90),
+      fontSize: fontSize,
+    );
     final titleStyle = TextStyle(
       color: Colors.white,
       fontSize: fontSize * 1.3,
       fontWeight: FontWeight.bold,
     );
+    final coordinateStyle = TextStyle(
+      color: CameraTokens.telemetryCyan,
+      fontSize: fontSize,
+      fontWeight: FontWeight.w600,
+      fontFamily: 'monospace',
+    );
+    final timeStyle = TextStyle(
+      color: CameraTokens.brandOchreLight,
+      fontSize: fontSize,
+      fontWeight: FontWeight.w500,
+    );
+    final metaStyle = TextStyle(
+      color: CameraTokens.telemetryCyan.withValues(alpha: 0.85),
+      fontSize: fontSize * 0.95,
+    );
 
-    // maxLines dibatasi meniru `WatermarkRenderer._buildTextLines` — baris
-    // alamat/custom text boleh sampai 2 baris (paling berisiko panjang),
-    // baris lain cukup 1. Tanpa batas ini, teks bisa menumpuk jadi banyak
-    // baris pada font besar (lihat `_liveScaleCalibration`), bikin panel
-    // jadi sangat tinggi.
-    void addLine(String text, {bool isTitle = false, int maxLines = 1}) {
+    void addLine(
+      String text, {
+      TextStyle? customStyle,
+      int maxLines = 1,
+    }) {
       widgets.add(
         Padding(
           padding: EdgeInsets.only(bottom: spacing),
           child: Text(
             text,
-            style: isTitle ? titleStyle : bodyStyle,
+            style: customStyle ?? bodyStyle,
             maxLines: maxLines,
             overflow: TextOverflow.ellipsis,
           ),
@@ -315,7 +365,9 @@ class LiveWatermarkOverlay extends StatelessWidget {
 
     if (config.showLocationName && address != null) {
       final name = address.village ?? address.regency;
-      if (name != null && name.isNotEmpty) addLine(name, isTitle: true);
+      if (name != null && name.isNotEmpty) {
+        addLine(name, customStyle: titleStyle);
+      }
     }
 
     if (config.showAddress) {
@@ -327,31 +379,35 @@ class LiveWatermarkOverlay extends StatelessWidget {
         );
         if (formatted.isNotEmpty) addLine(formatted, maxLines: 2);
       } else if (!config.showCoordinates) {
-        addLine(_coordinatesText(location));
+        addLine(_coordinatesText(location), customStyle: coordinateStyle);
       }
     }
 
-    if (config.showCoordinates) addLine(_coordinatesText(location));
+    if (config.showCoordinates) {
+      addLine(_coordinatesText(location), customStyle: coordinateStyle);
+    }
     if (config.showDate) {
-      addLine(DateFormat('dd MMM yyyy', 'id_ID').format(now));
+      addLine(DateFormat('dd MMM yyyy', 'id_ID').format(now), customStyle: timeStyle);
     }
     if (config.showTime) {
       final time = DateFormat('HH:mm:ss', 'id_ID').format(now);
-      addLine(config.showTimezone ? '$time (${now.timeZoneName})' : time);
+      addLine(
+        config.showTimezone ? '$time (${now.timeZoneName})' : time,
+        customStyle: timeStyle,
+      );
     }
     if (config.showAccuracy && location.accuracy != null) {
       addLine(
         'Akurasi: ±${location.accuracy!.round()} m (${location.accuracyCategory.label})',
+        customStyle: metaStyle,
       );
     }
     if (config.showAltitude && location.altitude != null) {
-      addLine('Alt: ${location.altitude!.round()} m');
+      addLine('Alt: ${location.altitude!.round()} m', customStyle: metaStyle);
     }
     if (config.customText != null && config.customText!.trim().isNotEmpty) {
       addLine(config.customText!.trim(), maxLines: 2);
     }
-    // appBrandingText TIDAK lagi jadi baris teks biasa di sini — sekarang
-    // jadi baris header terpisah di pojok kanan-atas panel, lihat `headerRow`.
 
     return widgets;
   }

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../core/theme/camera_tokens.dart';
 import '../geocoding/cached_geocoding_provider.dart';
 import '../geocoding/locationiq_geocoding_provider.dart';
 import '../map/cached_map_thumbnail_provider.dart';
@@ -138,8 +139,10 @@ class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserv
           ? null
           : FloatingActionButton.extended(
               onPressed: _addFromGallery,
+              backgroundColor: CameraTokens.brandOchre,
+              foregroundColor: CameraTokens.navyBackground,
               icon: const Icon(Icons.add_photo_alternate_outlined),
-              label: const Text('Tambah foto'),
+              label: const Text('Tambah foto', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
       body: entries == null
           ? const Center(child: CircularProgressIndicator())
@@ -147,6 +150,7 @@ class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserv
               ? const _EmptyHistory()
               : RefreshIndicator(
                   onRefresh: _loadEntries,
+                  color: CameraTokens.brandOchre,
                   child: GridView.builder(
                     padding: const EdgeInsets.all(12),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -178,8 +182,8 @@ class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserv
         if (entries != null && entries.isNotEmpty)
           TextButton.icon(
             onPressed: () => _toggleSelection(entries.first),
-            icon: const Icon(Icons.checklist, size: 18),
-            label: const Text('Pilih'),
+            icon: const Icon(Icons.checklist, size: 18, color: CameraTokens.brandOchreLight),
+            label: const Text('Pilih', style: TextStyle(color: CameraTokens.brandOchreLight)),
           ),
       ],
     );
@@ -187,15 +191,19 @@ class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserv
 
   AppBar _buildSelectionAppBar() {
     return AppBar(
+      backgroundColor: CameraTokens.navySurface,
       leading: IconButton(
         tooltip: 'Batal pilih',
         icon: const Icon(Icons.close),
         onPressed: _cancelSelection,
       ),
-      title: Text('${_selectedBaseNames.length} dipilih'),
+      title: Text(
+        '${_selectedBaseNames.length} dipilih',
+        style: const TextStyle(color: CameraTokens.brandOchreLight, fontWeight: FontWeight.bold),
+      ),
       actions: [
         IconButton(tooltip: 'Bagikan', icon: const Icon(Icons.share_outlined), onPressed: _shareSelected),
-        IconButton(tooltip: 'Hapus', icon: const Icon(Icons.delete_outline), onPressed: _deleteSelected),
+        IconButton(tooltip: 'Hapus', icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: _deleteSelected),
       ],
     );
   }
@@ -274,41 +282,89 @@ class _HistoryThumbnail extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.file(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? CameraTokens.brandOchre
+                : CameraTokens.petrolBlue.withValues(alpha: 0.35),
+            width: selected ? 2.5 : 1.0,
+          ),
+          boxShadow: [
+            if (selected)
+              BoxShadow(
+                color: CameraTokens.brandOchre.withValues(alpha: 0.3),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(
               File(entry.processedPath),
               fit: BoxFit.cover,
               cacheWidth: 400,
               errorBuilder: (context, error, stackTrace) => Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade900,
-                  borderRadius: BorderRadius.circular(8),
+                decoration: const BoxDecoration(
+                  color: CameraTokens.navySurface,
                 ),
                 child: const Center(
                   child: Icon(Icons.broken_image_outlined, color: Colors.white54),
                 ),
               ),
             ),
-          ),
-          if (selectionMode)
+            // Timestamp gradient badge at bottom
             Positioned(
-              top: 6,
-              right: 6,
-              child: CircleAvatar(
-                radius: 12,
-                backgroundColor: selected ? Theme.of(context).colorScheme.primary : Colors.black.withValues(alpha: 0.5),
-                child: Icon(
-                  selected ? Icons.check : Icons.circle_outlined,
-                  size: 16,
-                  color: Colors.white,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.8),
+                    ],
+                  ),
+                ),
+                child: Text(
+                  DateFormat('dd MMM HH:mm', 'id_ID').format(entry.timestamp),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
-        ],
+            if (selectionMode)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: CircleAvatar(
+                  radius: 12,
+                  backgroundColor: selected
+                      ? CameraTokens.brandOchre
+                      : Colors.black.withValues(alpha: 0.6),
+                  child: Icon(
+                    selected ? Icons.check : Icons.circle_outlined,
+                    size: 15,
+                    color: selected ? CameraTokens.navyBackground : Colors.white,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

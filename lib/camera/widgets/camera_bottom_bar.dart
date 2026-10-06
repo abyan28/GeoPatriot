@@ -1,11 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/camera_tokens.dart';
 
 /// Bar kontrol bawah kamera ergonomis untuk satu tangan:
-/// [Thumbnail Galeri Cepat] <---> [Tombol Rana] <---> [Tombol Ganti Kamera].
+/// [Thumbnail Galeri Cepat] <---> [Tombol Rana Dual-Ring] <---> [Tombol Ganti Kamera].
 class CameraBottomBar extends StatelessWidget {
   const CameraBottomBar({
     super.key,
@@ -53,18 +54,21 @@ class CameraBottomBar extends StatelessWidget {
           if (hasMultipleCameras)
             IconButton(
               tooltip: 'Ganti kamera',
-              iconSize: 28,
+              iconSize: 26,
               color: Colors.white,
               style: IconButton.styleFrom(
                 backgroundColor: CameraTokens.hudBackground,
-                side: BorderSide(color: CameraTokens.hudBorder, width: 1),
+                side: BorderSide(color: CameraTokens.hudBorder, width: 1.2),
                 padding: const EdgeInsets.all(14),
               ),
               icon: RotatedBox(
                 quarterTurns: quarterTurns,
                 child: const Icon(Icons.cameraswitch_outlined),
               ),
-              onPressed: onSwitchCamera,
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                onSwitchCamera();
+              },
             )
           else
             const SizedBox(width: 56),
@@ -89,14 +93,27 @@ class _QuickGalleryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final file = lastCapturedFile;
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: Container(
-        width: 52,
-        height: 52,
+        width: 54,
+        height: 54,
         decoration: BoxDecoration(
-          color: CameraTokens.hudBackground,
+          color: CameraTokens.navySurface,
           shape: BoxShape.circle,
-          border: Border.all(color: CameraTokens.hudBorder, width: 1.5),
+          border: Border.all(
+            color: CameraTokens.brandOchre.withValues(alpha: 0.75),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         clipBehavior: Clip.antiAlias,
         child: RotatedBox(
@@ -138,7 +155,12 @@ class _ShutterButtonState extends State<_ShutterButton> {
       enabled: enabled,
       label: widget.busy ? 'Sedang memproses foto' : 'Ambil foto',
       child: GestureDetector(
-        onTapDown: enabled ? (_) => setState(() => _isDown = true) : null,
+        onTapDown: enabled
+            ? (_) {
+                setState(() => _isDown = true);
+                HapticFeedback.mediumImpact();
+              }
+            : null,
         onTapUp: enabled
             ? (_) {
                 setState(() => _isDown = false);
@@ -151,27 +173,41 @@ class _ShutterButtonState extends State<_ShutterButton> {
           duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
           child: Container(
-            width: 76,
-            height: 76,
+            width: 80,
+            height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: CameraTokens.shutterRing, width: 4),
+              border: Border.all(color: CameraTokens.brandOchre, width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: CameraTokens.brandOchre.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              ],
             ),
-            padding: const EdgeInsets.all(5),
+            padding: const EdgeInsets.all(4),
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _isDown ? CameraTokens.shutterPressed : CameraTokens.shutterInner,
+                border: Border.all(color: Colors.white, width: 3),
               ),
-              child: widget.busy
-                  ? const Padding(
-                      padding: EdgeInsets.all(18),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.black,
-                      ),
-                    )
-                  : null,
+              padding: const EdgeInsets.all(3),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _isDown ? CameraTokens.brandOchreLight : CameraTokens.shutterInner,
+                ),
+                child: widget.busy
+                    ? const Padding(
+                        padding: EdgeInsets.all(18),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: CameraTokens.navyBackground,
+                        ),
+                      )
+                    : null,
+              ),
             ),
           ),
         ),
@@ -179,3 +215,4 @@ class _ShutterButtonState extends State<_ShutterButton> {
     );
   }
 }
+

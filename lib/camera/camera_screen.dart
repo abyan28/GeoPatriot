@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -87,6 +88,7 @@ class _CameraScreenState extends State<CameraScreen>
   double _maxZoom = 1.0;
   double _currentZoom = 1.0;
   double _baseZoom = 1.0;
+  bool _isPinching = false;
 
   /// Daftarkan observer lifecycle, siapkan capture controller, lalu mulai
   /// alur pengecekan izin.
@@ -375,6 +377,7 @@ class _CameraScreenState extends State<CameraScreen>
   /// Catat level zoom saat ini sebagai dasar sebelum gesture cubit dimulai.
   void _onScaleStart(ScaleStartDetails details) {
     _baseZoom = _currentZoom;
+    setState(() => _isPinching = true);
   }
 
   /// Ubah level zoom kamera sungguhan mengikuti gesture cubit, di-clamp ke
@@ -385,6 +388,11 @@ class _CameraScreenState extends State<CameraScreen>
     if (newZoom == _currentZoom) return;
     setState(() => _currentZoom = newZoom);
     _cameraService.setZoomLevel(newZoom);
+  }
+
+  /// Beri tahu bahwa gesture cubit telah selesai agar auto-collapse timer berjalan.
+  void _onScaleEnd(ScaleEndDetails details) {
+    setState(() => _isPinching = false);
   }
 
   /// Ubah level zoom kamera sesuai posisi drag di `ZoomRulerControl` —
@@ -458,9 +466,11 @@ class _CameraScreenState extends State<CameraScreen>
                   minZoom: _minZoom,
                   maxZoom: _maxZoom,
                   currentZoom: _currentZoom,
+                  isPinching: _isPinching,
                   isFlashing: _isFlashing,
                   onScaleStart: _onScaleStart,
                   onScaleUpdate: _onScaleUpdate,
+                  onScaleEnd: _onScaleEnd,
                   onRulerZoomChanged: _onRulerZoomChanged,
                   onSwitchCamera: _onSwitchCamera,
                   onShutterPressed: _onShutterPressed,
@@ -599,9 +609,11 @@ class _CameraBody extends StatelessWidget {
     required this.minZoom,
     required this.maxZoom,
     required this.currentZoom,
+    required this.isPinching,
     required this.isFlashing,
     required this.onScaleStart,
     required this.onScaleUpdate,
+    required this.onScaleEnd,
     required this.onRulerZoomChanged,
     required this.onSwitchCamera,
     required this.onShutterPressed,
@@ -626,9 +638,11 @@ class _CameraBody extends StatelessWidget {
   final double minZoom;
   final double maxZoom;
   final double currentZoom;
+  final bool isPinching;
   final bool isFlashing;
   final GestureScaleStartCallback onScaleStart;
   final GestureScaleUpdateCallback onScaleUpdate;
+  final GestureScaleEndCallback onScaleEnd;
   final ValueChanged<double> onRulerZoomChanged;
   final VoidCallback onSwitchCamera;
   final VoidCallback onShutterPressed;
@@ -655,6 +669,7 @@ class _CameraBody extends StatelessWidget {
               GestureDetector(
                 onScaleStart: onScaleStart,
                 onScaleUpdate: onScaleUpdate,
+                onScaleEnd: onScaleEnd,
                 child: Center(child: FixedCameraPreview(controller!)),
               )
             else if (cameraFailed)
@@ -670,7 +685,11 @@ class _CameraBody extends StatelessWidget {
 
             // 3. Zoom Ruler
             if (cameraReady && maxZoom > minZoom)
-              _buildZoomRuler(constraints, quarterTurns: quarterTurns),
+              _buildZoomRuler(
+                constraints,
+                quarterTurns: quarterTurns,
+                isPinching: isPinching,
+              ),
 
             // 4. Shutter Flash Effect
             if (isFlashing)
@@ -679,6 +698,52 @@ class _CameraBody extends StatelessWidget {
                   child: Container(color: Colors.white.withValues(alpha: 0.65)),
                 ),
               ),
+
+            // Top Scrim Gradient (Memastikan HUD selalu terbaca di latar terang)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 130,
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        CameraTokens.navyBackground.withValues(alpha: 0.88),
+                        CameraTokens.navyBackground.withValues(alpha: 0.40),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Bottom Scrim Gradient (Memastikan tombol shutter & galeri kontras)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 150,
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        CameraTokens.navyBackground.withValues(alpha: 0.50),
+                        CameraTokens.navyBackground.withValues(alpha: 0.92),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
             // 5. Banner Notifikasi Tersimpan (Tappable ke Galeri)
             if (session != null && showSavedBanner)
@@ -715,11 +780,15 @@ class _CameraBody extends StatelessWidget {
                               tooltip: 'Tambah watermark dari galeri',
                               style: IconButton.styleFrom(
                                 backgroundColor: CameraTokens.hudBackground,
-                                side: BorderSide(color: CameraTokens.hudBorder, width: 1),
+                                side: BorderSide(color: CameraTokens.hudBorder, width: 1.2),
                                 padding: const EdgeInsets.all(10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               ),
-                              icon: const Icon(Icons.add_photo_alternate_outlined, color: Colors.white),
-                              onPressed: onAddFromGallery,
+                              icon: const Icon(Icons.add_photo_alternate_outlined, color: Colors.white, size: 20),
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                onAddFromGallery();
+                              },
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -728,31 +797,45 @@ class _CameraBody extends StatelessWidget {
                               tooltip: 'Input manual koordinat & waktu',
                               style: IconButton.styleFrom(
                                 backgroundColor: manualActive
-                                    ? Theme.of(context).colorScheme.primary
+                                    ? CameraTokens.brandOchre
                                     : CameraTokens.hudBackground,
-                                side: BorderSide(color: CameraTokens.hudBorder, width: 1),
+                                side: BorderSide(
+                                  color: manualActive
+                                      ? CameraTokens.brandOchreLight
+                                      : CameraTokens.hudBorder,
+                                  width: 1.2,
+                                ),
                                 padding: const EdgeInsets.all(10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               ),
                               icon: Icon(
                                 Icons.edit_location_alt_outlined,
-                                color: manualActive ? Theme.of(context).colorScheme.onPrimary : Colors.white,
+                                color: manualActive ? CameraTokens.navyBackground : Colors.white,
+                                size: 20,
                               ),
-                              onPressed: onOpenManualOverride,
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                onOpenManualOverride();
+                              },
                             ),
                           ),
                           const SizedBox(width: 8),
-                      _RotatedControl(
-                        child: IconButton(
-                          tooltip: 'Pengaturan',
-                          style: IconButton.styleFrom(
-                            backgroundColor: CameraTokens.hudBackground,
-                            side: BorderSide(color: CameraTokens.hudBorder, width: 1),
-                            padding: const EdgeInsets.all(10),
+                          _RotatedControl(
+                            child: IconButton(
+                              tooltip: 'Pengaturan',
+                              style: IconButton.styleFrom(
+                                backgroundColor: CameraTokens.hudBackground,
+                                side: BorderSide(color: CameraTokens.hudBorder, width: 1.2),
+                                padding: const EdgeInsets.all(10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
+                              icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 20),
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                onOpenSettings();
+                              },
+                            ),
                           ),
-                          icon: const Icon(Icons.settings_outlined, color: Colors.white),
-                          onPressed: onOpenSettings,
-                        ),
-                      ),
                         ],
                       ),
                     ],
@@ -837,6 +920,7 @@ class _CameraBody extends StatelessWidget {
             previewAreaSize: constraints.biggest,
             topClearance: topClearance,
             bottomClearance: bottomClearance,
+            onTap: onOpenManualOverride,
           ),
         ],
       ),
@@ -857,8 +941,12 @@ class _CameraBody extends StatelessWidget {
   /// SAMA dengan `_RotatedControl` (ikon-ikon lain di layar ini). Ukuran
   /// setelah dirotasi (lebar/tinggi TERTUKAR untuk quarterTurns ganjil)
   /// dipakai untuk hitung posisi, supaya tetap pas di kedua orientasi.
-  Widget _buildZoomRuler(BoxConstraints constraints, {required int quarterTurns}) {
-    const rulerLength = 220.0;
+  Widget _buildZoomRuler(
+    BoxConstraints constraints, {
+    required int quarterTurns,
+    required bool isPinching,
+  }) {
+    const rulerLength = 255.0;
     const rulerThickness = ZoomRulerControl.thickness;
     const edgeMargin = 8.0;
     // Diletakkan di atas baris tombol shutter (bottom: 48, tinggi ~72)
@@ -884,6 +972,7 @@ class _CameraBody extends StatelessWidget {
           currentZoom: currentZoom,
           onZoomChanged: onRulerZoomChanged,
           length: rulerLength,
+          isPinching: isPinching,
         ),
       ),
     );

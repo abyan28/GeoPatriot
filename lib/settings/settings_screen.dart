@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/theme/camera_tokens.dart';
 import '../watermark/models/watermark_configuration.dart';
 import '../watermark/models/watermark_position.dart';
 import '../watermark/models/watermark_template.dart';
@@ -259,10 +260,12 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
         title,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: CameraTokens.brandOchreLight,
+          fontSize: 14,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }
@@ -302,25 +305,26 @@ class _LiveWatermarkPreview extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         height: 180,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: const Color(0xFF20252B),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+          color: CameraTokens.navyBackground,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: CameraTokens.petrolBlue.withValues(alpha: 0.45), width: 1.2),
         ),
         child: Stack(
           children: [
             // Latar simulasi viewfinder foto
             Positioned.fill(
               child: Opacity(
-                opacity: 0.25,
+                opacity: 0.20,
                 child: Center(
                   child: Icon(
                     Icons.landscape_outlined,
                     size: 80,
-                    color: Colors.white.withValues(alpha: 0.3),
+                    color: CameraTokens.brandOchre.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -334,8 +338,18 @@ class _LiveWatermarkPreview extends StatelessWidget {
                   constraints: const BoxConstraints(maxWidth: 280),
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: watermark.opacity.clamp(0.1, 1.0)),
+                    color: CameraTokens.navySurface.withValues(alpha: watermark.opacity.clamp(0.4, 1.0)),
                     borderRadius: BorderRadius.circular(watermark.cornerRadius.clamp(4, 16)),
+                    border: Border.all(
+                      color: CameraTokens.petrolBlue.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 8,
+                      ),
+                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -346,10 +360,14 @@ class _LiveWatermarkPreview extends StatelessWidget {
                           width: (watermark.thumbnailSize * 0.35).clamp(32.0, 56.0),
                           height: (watermark.thumbnailSize * 0.35).clamp(32.0, 56.0),
                           decoration: BoxDecoration(
-                            color: Colors.teal.shade800,
-                            borderRadius: BorderRadius.circular(4),
+                            color: CameraTokens.navyPrimary,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: CameraTokens.petrolBlue.withValues(alpha: 0.6),
+                              width: 1,
+                            ),
                           ),
-                          child: const Icon(Icons.map, size: 20, color: Colors.white),
+                          child: const Icon(Icons.map_outlined, size: 20, color: CameraTokens.brandOchreLight),
                         ),
                         const SizedBox(width: 6),
                       ],
@@ -383,25 +401,27 @@ class _LiveWatermarkPreview extends StatelessWidget {
                               const Text(
                                 '-6.195412, 106.823145',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: CameraTokens.telemetryCyan,
                                   fontSize: 9,
                                   fontFamily: 'monospace',
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             if (watermark.showDate || watermark.showTime)
                               Text(
                                 '${watermark.showDate ? '15 Sep 2026' : ''} ${watermark.showTime ? '14:00:25' : ''}${watermark.showTimezone ? ' (WIB)' : ''}'
                                     .trim(),
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
+                                style: const TextStyle(
+                                  color: CameraTokens.brandOchreLight,
                                   fontSize: 8,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             if (watermark.showAccuracy)
                               Text(
                                 'Akurasi: ±4 m (Sangat baik)',
                                 style: TextStyle(
-                                  color: Colors.greenAccent.shade200,
+                                  color: CameraTokens.gpsExcellent,
                                   fontSize: 8,
                                 ),
                               ),
@@ -409,15 +429,15 @@ class _LiveWatermarkPreview extends StatelessWidget {
                               Text(
                                 'Ketinggian: 18 m',
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
+                                  color: CameraTokens.telemetryCyan.withValues(alpha: 0.85),
                                   fontSize: 8,
                                 ),
                               ),
                             if (watermark.customText != null && watermark.customText!.isNotEmpty)
                               Text(
                                 watermark.customText!,
-                                style: TextStyle(
-                                  color: Colors.amberAccent.shade100,
+                                style: const TextStyle(
+                                  color: CameraTokens.brandOchreLight,
                                   fontSize: 8,
                                   fontStyle: FontStyle.italic,
                                 ),
@@ -454,7 +474,20 @@ class _TemplatePicker extends StatelessWidget {
         final isSelected = current == template;
         return ChoiceChip(
           label: Text(template.label),
+          labelStyle: TextStyle(
+            color: isSelected ? CameraTokens.navyBackground : Colors.white,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 13,
+          ),
           selected: isSelected,
+          selectedColor: CameraTokens.brandOchre,
+          backgroundColor: CameraTokens.navySurface,
+          side: BorderSide(
+            color: isSelected
+                ? CameraTokens.brandOchreLight
+                : CameraTokens.petrolBlue.withValues(alpha: 0.4),
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           onSelected: (_) => controller.applyTemplate(template),
         );
       }).toList(),
@@ -483,9 +516,23 @@ class _PositionPicker extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: WatermarkPosition.values.map((position) {
+        final isSelected = current == position;
         return ChoiceChip(
           label: Text(_labels[position]!),
-          selected: current == position,
+          labelStyle: TextStyle(
+            color: isSelected ? CameraTokens.navyBackground : Colors.white,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 12,
+          ),
+          selected: isSelected,
+          selectedColor: CameraTokens.brandOchre,
+          backgroundColor: CameraTokens.navySurface,
+          side: BorderSide(
+            color: isSelected
+                ? CameraTokens.brandOchreLight
+                : CameraTokens.petrolBlue.withValues(alpha: 0.4),
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           onSelected: (_) => controller.updateWatermark((c) => c.copyWith(position: position)),
         );
       }).toList(),
@@ -523,13 +570,14 @@ class _SliderSetting extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: Theme.of(context).textTheme.bodyMedium),
+              Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
               Text(
                 formattedValue,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: CameraTokens.brandOchreLight,
+                  fontSize: 13,
+                ),
               ),
             ],
           ),
@@ -538,6 +586,9 @@ class _SliderSetting extends StatelessWidget {
             min: min,
             max: max,
             divisions: divisions,
+            activeColor: CameraTokens.brandOchre,
+            inactiveColor: CameraTokens.petrolBlue.withValues(alpha: 0.3),
+            thumbColor: CameraTokens.brandOchreLight,
             onChanged: onChanged,
           ),
         ],
@@ -583,13 +634,29 @@ class _CustomTextInputState extends State<_CustomTextInput> {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: _controller,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
       decoration: InputDecoration(
         labelText: 'Catatan tambahan watermark',
+        labelStyle: const TextStyle(color: Colors.white70),
         hintText: 'Misal: Tim Survey 1 / Inspeksi Proyek A',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+        filled: true,
+        fillColor: CameraTokens.navyBackground,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: CameraTokens.petrolBlue.withValues(alpha: 0.4)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: CameraTokens.petrolBlue.withValues(alpha: 0.4)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: CameraTokens.brandOchre, width: 1.5),
+        ),
         suffixIcon: _controller.text.isNotEmpty
             ? IconButton(
-                icon: const Icon(Icons.clear, size: 20),
+                icon: const Icon(Icons.clear, size: 20, color: Colors.white70),
                 onPressed: () {
                   _controller.clear();
                   widget.onChanged('');
