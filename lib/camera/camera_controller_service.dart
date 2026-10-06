@@ -2,6 +2,16 @@ import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:native_device_orientation/native_device_orientation.dart';
 
+/// Index kamera pertama yang menghadap [direction], atau null bila tidak ada.
+/// Entri PERTAMA tiap arah adalah kamera logis utama (di HP multi-lensa ia
+/// yang punya rentang zoom penuh, mis. 0.6x ultra-wide). Perangkat bisa
+/// mendaftarkan lebih dari dua kamera, jadi switch tidak boleh sekadar
+/// memutar index.
+int? pickCameraIndex(List<CameraDescription> cameras, CameraLensDirection direction) {
+  final index = cameras.indexWhere((camera) => camera.lensDirection == direction);
+  return index < 0 ? null : index;
+}
+
 /// Membungkus package `camera`: daftar kamera, inisialisasi controller, dan
 /// switch kamera. Lifecycle (pause/resume saat app di-background) ditangani
 /// oleh pemanggil lewat [pause] dan [resume], karena itu adalah concern
@@ -16,7 +26,9 @@ class CameraControllerService {
 
   bool get isInitialized => _controller?.value.isInitialized ?? false;
 
-  bool get hasMultipleCameras => _cameras.length > 1;
+  bool get hasMultipleCameras =>
+      pickCameraIndex(_cameras, CameraLensDirection.back) != null &&
+      pickCameraIndex(_cameras, CameraLensDirection.front) != null;
 
   /// True selama [switchCamera] berjalan; dipakai pemanggil untuk menolak
   /// tap ganda pada tombol switch.
@@ -28,6 +40,7 @@ class CameraControllerService {
     if (_cameras.isEmpty) {
       throw StateError('Tidak ada kamera yang tersedia pada perangkat ini.');
     }
+    _selectedCameraIndex = pickCameraIndex(_cameras, CameraLensDirection.back) ?? 0;
     await _openCamera(_selectedCameraIndex);
   }
 
@@ -42,7 +55,10 @@ class CameraControllerService {
     _switching = true;
     final previousIndex = _selectedCameraIndex;
     try {
-      _selectedCameraIndex = (previousIndex + 1) % _cameras.length;
+      final target = _cameras[previousIndex].lensDirection == CameraLensDirection.front
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
+      _selectedCameraIndex = pickCameraIndex(_cameras, target)!;
       await _openCamera(_selectedCameraIndex);
     } catch (_) {
       _selectedCameraIndex = previousIndex;
