@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -25,7 +26,7 @@ class WatermarkRenderException implements Exception {
 /// mengubah application state global.
 class WatermarkRenderer {
   static const _baseInnerPadding = 14;
-  static const _jpegQuality = 90;
+  static const jpegQuality = 90;
 
   /// Padding di dalam kotak lencana (badge) logo+nama aplikasi — lebih
   /// kecil dari `_innerPadding` panel utama karena badge memang dibuat
@@ -60,27 +61,66 @@ class WatermarkRenderer {
     // Normalisasi orientasi EXIF supaya piksel sesuai tampilan portrait/landscape asli.
     final oriented = img.bakeOrientation(source);
 
-    // Semua ukuran watermark diskalakan terhadap resolusi foto (acuan 720 px
-    // sisi pendek), supaya kotaknya tidak mengecil saat resolusi dinaikkan.
-    final scale = watermarkScaleFor(oriented.width, oriented.height);
-    return _renderOnImage(
-      oriented,
+    final layout = _layout(
+      imageWidth: oriented.width,
+      imageHeight: oriented.height,
       data: data,
-      config: config.scaledBy(scale),
+      baseConfig: config,
       appIconBytes: appIconBytes,
-      scale: scale,
+    );
+    _paint(oriented, layout, 0, 0);
+    return Uint8List.fromList(img.encodeJpg(oriented, quality: jpegQuality));
+  }
+
+  /// Render HANYA panel watermark (panel info + lencana) ke gambar RGBA kecil
+  /// transparan untuk ditempel ke foto berukuran [imageWidth] x [imageHeight]
+  /// (sudah dalam orientasi tampilan) di luar Dart, mis. oleh kompositor
+  /// native. Tata letak, font, dan skala identik dengan [render], tetapi foto
+  /// penuh tidak perlu didekode/di-encode ulang di sini.
+  WatermarkOverlay renderOverlay({
+    required int imageWidth,
+    required int imageHeight,
+    required WatermarkData data,
+    required WatermarkConfiguration config,
+    Uint8List? appIconBytes,
+  }) {
+    final layout = _layout(
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+      data: data,
+      baseConfig: config,
+      appIconBytes: appIconBytes,
+    );
+    final badge = layout.badge;
+    final left = math.max(0, math.min(layout.panelX, badge.x));
+    final top = math.max(0, math.min(layout.panelY, badge.y));
+    final right = math.min(imageWidth, math.max(layout.panelX + layout.panelWidth, badge.x + badge.width));
+    final bottom = math.min(imageHeight, math.max(layout.panelY + layout.panelHeight, badge.y + badge.height));
+
+    final canvas = img.Image(width: math.max(1, right - left), height: math.max(1, bottom - top), numChannels: 4);
+    _paint(canvas, layout, -left, -top);
+    return WatermarkOverlay(
+      png: Uint8List.fromList(img.encodePng(canvas, level: 3)),
+      x: left,
+      y: top,
     );
   }
 
-  /// Gambar watermark ke [oriented] memakai [config] yang SUDAH diskalakan
-  /// dengan faktor [scale] (padding internal ikut dikalikan [scale]).
-  Uint8List _renderOnImage(
-    img.Image oriented, {
+  /// Hitung seluruh tata letak watermark (teks ter-wrap, ukuran/posisi panel,
+  /// lencana) untuk foto [imageWidth] x [imageHeight]. Murni perhitungan:
+  /// tidak menggambar apa pun.
+  _OverlayLayout _layout({
+    required int imageWidth,
+    required int imageHeight,
     required WatermarkData data,
-    required WatermarkConfiguration config,
+    required WatermarkConfiguration baseConfig,
     required Uint8List? appIconBytes,
-    required double scale,
   }) {
+    // Semua ukuran watermark diskalakan terhadap resolusi foto (acuan 720 px
+    // sisi pendek), supaya kotaknya tidak mengecil saat resolusi dinaikkan.
+    final scale = watermarkScaleFor(imageWidth, imageHeight);
+    final config = baseConfig.scaledBy(scale);
+
     final innerPadding = (_baseInnerPadding * scale).round();
     final badgePadding = (_baseBadgePadding * scale).round();
     final badgeOverlap = (_baseBadgeOverlap * scale).round();
@@ -95,7 +135,7 @@ class WatermarkRenderer {
 
     final thumbnailSize = showThumbnail ? config.thumbnailSize.round() : 0;
     final thumbnailReservedWidth = showThumbnail ? thumbnailSize + config.spacing.round() : 0;
-    final maxTextWidth = oriented.width - 2 * config.margin.round() - 2 * innerPadding - thumbnailReservedWidth;
+    final maxTextWidth = imageWidth - 2 * config.margin.round() - 2 * innerPadding - thumbnailReservedWidth;
 
     // Wrap tiap baris memakai font-nya sendiri (judul lebih besar dari body),
     // supaya batas karakter per baris sesuai lebar huruf yang sebenarnya dipakai.
@@ -119,56 +159,79 @@ class WatermarkRenderer {
     final panelWidth = thumbnailReservedWidth + textBlockWidth + 2 * innerPadding;
 
     final panelOrigin = _panelOrigin(
-      imageWidth: oriented.width,
-      imageHeight: oriented.height,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
       panelWidth: panelWidth,
       panelHeight: panelHeight,
       margin: config.margin.round(),
       position: config.position,
     );
 
-    _drawPanel(oriented, panelOrigin.dx, panelOrigin.dy, panelWidth, panelHeight, config);
-
-    _drawBrandBadge(
-      oriented,
+    final badge = _layoutBrandBadge(
       config: config,
       appIconBytes: appIconBytes,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
       panelOrigin: panelOrigin,
       panelWidth: panelWidth,
       panelHeight: panelHeight,
-      imageHeight: oriented.height,
       badgePadding: badgePadding,
       badgeOverlap: badgeOverlap,
     );
 
-    var textX = panelOrigin.dx + innerPadding;
-    final textY = panelOrigin.dy + innerPadding;
+    return _OverlayLayout(
+      config: config,
+      lines: rendered,
+      lineHeights: lineHeights,
+      map: mapImage,
+      thumbnailSize: thumbnailSize,
+      thumbnailReservedWidth: thumbnailReservedWidth,
+      innerPadding: innerPadding,
+      panelX: panelOrigin.dx,
+      panelY: panelOrigin.dy,
+      panelWidth: panelWidth,
+      panelHeight: panelHeight,
+      badge: badge,
+    );
+  }
 
-    if (showThumbnail) {
+  /// Gambar [layout] ke [canvas], digeser ([offsetX], [offsetY]) — nol untuk
+  /// menggambar langsung di atas foto, negatif untuk kanvas panel saja.
+  void _paint(img.Image canvas, _OverlayLayout layout, int offsetX, int offsetY) {
+    final config = layout.config;
+    final panelX = layout.panelX + offsetX;
+    final panelY = layout.panelY + offsetY;
+
+    _drawPanel(canvas, panelX, panelY, layout.panelWidth, layout.panelHeight, config);
+    _paintBrandBadge(canvas, layout.badge, config, offsetX, offsetY);
+
+    var textX = panelX + layout.innerPadding;
+    final textY = panelY + layout.innerPadding;
+
+    final mapImage = layout.map;
+    if (mapImage != null) {
       final resizedMap = img.copyResize(
         mapImage,
-        width: thumbnailSize,
-        height: thumbnailSize,
+        width: layout.thumbnailSize,
+        height: layout.thumbnailSize,
       );
-      final thumbY = panelOrigin.dy + (panelHeight - thumbnailSize) ~/ 2;
-      img.compositeImage(oriented, resizedMap, dstX: textX, dstY: thumbY);
-      textX += thumbnailReservedWidth;
+      final thumbY = panelY + (layout.panelHeight - layout.thumbnailSize) ~/ 2;
+      img.compositeImage(canvas, resizedMap, dstX: textX, dstY: thumbY);
+      textX += layout.thumbnailReservedWidth;
     }
 
     var y = textY;
-    for (var i = 0; i < rendered.length; i++) {
+    for (var i = 0; i < layout.lines.length; i++) {
       img.drawString(
-        oriented,
-        rendered[i].text,
-        font: rendered[i].font,
+        canvas,
+        layout.lines[i].text,
+        font: layout.lines[i].font,
         x: textX,
         y: y,
         color: img.ColorRgba8(255, 255, 255, 255),
       );
-      y += lineHeights[i];
+      y += layout.lineHeights[i];
     }
-
-    return Uint8List.fromList(img.encodeJpg(oriented, quality: _jpegQuality));
   }
 
   /// Susun daftar baris teks watermark sesuai field yang diaktifkan di
@@ -296,21 +359,21 @@ class WatermarkRenderer {
     );
   }
 
-  /// Gambar kotak lencana (badge) kecil berisi ikon aplikasi + nama brand,
+  /// Hitung kotak lencana (badge) kecil berisi ikon aplikasi + nama brand,
   /// ditempelkan menempel ke SISI panel info lokasi (bukan bagian dari
   /// panel itu) — meniru posisi logo di aplikasi referensi. Ditempel di
   /// sisi yang menjauhi tepi gambar terdekat (kalau panel dekat tepi atas,
   /// lencana ditempel di BAWAH panel; kalau panel dekat tepi bawah,
   /// lencana ditempel di ATAS panel), supaya lencananya tidak pernah
   /// terpotong keluar batas gambar apa pun posisi watermark yang dipilih.
-  void _drawBrandBadge(
-    img.Image image, {
+  _BadgeLayout _layoutBrandBadge({
     required WatermarkConfiguration config,
     required Uint8List? appIconBytes,
+    required int imageWidth,
+    required int imageHeight,
     required ({int dx, int dy}) panelOrigin,
     required int panelWidth,
     required int panelHeight,
-    required int imageHeight,
     required int badgePadding,
     required int badgeOverlap,
   }) {
@@ -335,26 +398,49 @@ class WatermarkRenderer {
 
     // Rata kanan terhadap panel utama, menempel di sisi yang menjauhi tepi
     // gambar terdekat (lihat dokumentasi method).
-    final badgeX = (panelOrigin.dx + panelWidth - badgeWidth).clamp(0, image.width - badgeWidth);
+    final badgeX = (panelOrigin.dx + panelWidth - badgeWidth).clamp(0, math.max(0, imageWidth - badgeWidth)).toInt();
     final attachAbovePanel = panelOrigin.dy > (imageHeight / 2);
-    final badgeY = attachAbovePanel
-        ? (panelOrigin.dy - badgeHeight + badgeOverlap).clamp(0, image.height - badgeHeight)
-        : (panelOrigin.dy + panelHeight - badgeOverlap).clamp(0, image.height - badgeHeight);
+    final maxBadgeY = math.max(0, imageHeight - badgeHeight);
+    final badgeY = (attachAbovePanel
+            ? (panelOrigin.dy - badgeHeight + badgeOverlap).clamp(0, maxBadgeY)
+            : (panelOrigin.dy + panelHeight - badgeOverlap).clamp(0, maxBadgeY))
+        .toInt();
 
-    _drawPanel(image, badgeX, badgeY, badgeWidth, badgeHeight, config);
-
-    final rowX = badgeX + badgePadding;
-    final rowY = badgeY + badgePadding;
-    if (icon != null) {
-      final iconY = rowY + (rowHeight - iconSize) ~/ 2;
-      img.compositeImage(image, icon, dstX: rowX, dstY: iconY);
-    }
-    final textY = rowY + (rowHeight - _lineHeightFor(font)) ~/ 2;
-    img.drawString(
-      image,
-      config.appBrandingText,
+    return _BadgeLayout(
+      x: badgeX,
+      y: badgeY,
+      width: badgeWidth,
+      height: badgeHeight,
+      padding: badgePadding,
+      rowHeight: rowHeight,
+      iconSize: iconSize,
+      iconReservedWidth: iconReservedWidth,
+      icon: icon,
       font: font,
-      x: rowX + iconReservedWidth,
+    );
+  }
+
+  /// Gambar lencana hasil [_layoutBrandBadge] ke [canvas], digeser
+  /// ([offsetX], [offsetY]).
+  void _paintBrandBadge(img.Image canvas, _BadgeLayout badge, WatermarkConfiguration config, int offsetX, int offsetY) {
+    final badgeX = badge.x + offsetX;
+    final badgeY = badge.y + offsetY;
+
+    _drawPanel(canvas, badgeX, badgeY, badge.width, badge.height, config);
+
+    final rowX = badgeX + badge.padding;
+    final rowY = badgeY + badge.padding;
+    final icon = badge.icon;
+    if (icon != null) {
+      final iconY = rowY + (badge.rowHeight - badge.iconSize) ~/ 2;
+      img.compositeImage(canvas, icon, dstX: rowX, dstY: iconY);
+    }
+    final textY = rowY + (badge.rowHeight - _lineHeightFor(badge.font)) ~/ 2;
+    img.drawString(
+      canvas,
+      config.appBrandingText,
+      font: badge.font,
+      x: rowX + badge.iconReservedWidth,
       y: textY,
       color: img.ColorRgba8(255, 255, 255, 255),
     );
@@ -449,5 +535,73 @@ class _RenderedLine {
   const _RenderedLine(this.text, this.font);
 
   final String text;
+  final img.BitmapFont font;
+}
+
+/// Panel watermark (RGBA transparan, PNG) beserta posisinya di foto, untuk
+/// ditempel oleh kompositor native.
+class WatermarkOverlay {
+  const WatermarkOverlay({required this.png, required this.x, required this.y});
+
+  final Uint8List png;
+  final int x;
+  final int y;
+}
+
+/// Hasil perhitungan tata letak watermark, siap digambar oleh `_paint`.
+class _OverlayLayout {
+  const _OverlayLayout({
+    required this.config,
+    required this.lines,
+    required this.lineHeights,
+    required this.map,
+    required this.thumbnailSize,
+    required this.thumbnailReservedWidth,
+    required this.innerPadding,
+    required this.panelX,
+    required this.panelY,
+    required this.panelWidth,
+    required this.panelHeight,
+    required this.badge,
+  });
+
+  final WatermarkConfiguration config;
+  final List<_RenderedLine> lines;
+  final List<int> lineHeights;
+  final img.Image? map;
+  final int thumbnailSize;
+  final int thumbnailReservedWidth;
+  final int innerPadding;
+  final int panelX;
+  final int panelY;
+  final int panelWidth;
+  final int panelHeight;
+  final _BadgeLayout badge;
+}
+
+/// Tata letak kotak lencana logo + nama aplikasi.
+class _BadgeLayout {
+  const _BadgeLayout({
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+    required this.padding,
+    required this.rowHeight,
+    required this.iconSize,
+    required this.iconReservedWidth,
+    required this.icon,
+    required this.font,
+  });
+
+  final int x;
+  final int y;
+  final int width;
+  final int height;
+  final int padding;
+  final int rowHeight;
+  final int iconSize;
+  final int iconReservedWidth;
+  final img.Image? icon;
   final img.BitmapFont font;
 }

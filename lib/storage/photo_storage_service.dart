@@ -158,9 +158,28 @@ class PhotoStorageService {
   /// STAGING (privat), dipakai untuk baca bytes (render watermark) dan
   /// sebagai sumber [publishOriginalToGallery] kalau setting "Simpan foto
   /// original" aktif — kalau tidak, staging ini dihapus begitu saja.
-  Future<File> saveOriginal(String sourcePath, {required String baseName}) async {
+  ///
+  /// Dengan [move] true file sumber DIPINDAH (rename, tanpa menyalin isi);
+  /// dipakai untuk file sementara kamera. Bila rename gagal (beda volume)
+  /// jatuh ke salin. Jangan pakai [move] untuk foto milik user (galeri).
+  Future<File> saveOriginal(String sourcePath, {required String baseName, bool move = false}) async {
     final dir = await _originalStagingDirectory();
-    return File(sourcePath).copy('${dir.path}/$baseName.jpg');
+    final target = '${dir.path}/$baseName.jpg';
+    if (move) {
+      try {
+        return await File(sourcePath).rename(target);
+      } on FileSystemException {
+        // Beda volume: jatuh ke salin di bawah.
+      }
+    }
+    return File(sourcePath).copy(target);
+  }
+
+  /// File tujuan foto processed di folder staging (belum tentu sudah ada),
+  /// untuk ditulis langsung oleh kompositor native.
+  Future<File> processedStagingFile(String baseName) async {
+    final dir = await _processedStagingDirectory();
+    return File('${dir.path}/$baseName.jpg');
   }
 
   /// Salin foto original dari file staging ke Galeri publik Android (album

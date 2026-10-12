@@ -218,4 +218,48 @@ void main() {
     expect(decoded!.width, 4032);
     expect(decoded.height, 3024);
   });
+
+  test('renderOverlay yang ditempel ke foto sama dengan hasil render penuh', () {
+    final data = WatermarkData(
+      location: _sampleLocation(),
+      timestamp: DateTime(2026, 3, 5, 14, 30),
+      timeZoneName: 'WIB',
+      address: const AddressSnapshot(village: 'Cipadung', regency: 'Kota Bandung', province: 'Jawa Barat'),
+      map: MapSnapshot(imageBytes: _fakeMapPng(), attributionText: '© OpenStreetMap contributors'),
+    );
+    final config = WatermarkConfiguration.defaultTemplate();
+
+    for (final size in [(width: 1080, height: 1920), (width: 1920, height: 1080), (width: 4000, height: 3000)]) {
+      final source = _fakeJpeg(size.width, size.height);
+      final full = img.decodeJpg(renderer.render(sourceImageBytes: source, data: data, config: config))!;
+
+      final overlay = renderer.renderOverlay(
+        imageWidth: size.width,
+        imageHeight: size.height,
+        data: data,
+        config: config,
+      );
+      final overlayImage = img.decodePng(overlay.png)!;
+      expect(overlay.x, greaterThanOrEqualTo(0));
+      expect(overlay.y, greaterThanOrEqualTo(0));
+      expect(overlay.x + overlayImage.width, lessThanOrEqualTo(size.width));
+      expect(overlay.y + overlayImage.height, lessThanOrEqualTo(size.height));
+
+      final composed = img.decodeJpg(source)!;
+      img.compositeImage(composed, overlayImage, dstX: overlay.x, dstY: overlay.y);
+
+      // JPEG lossy: bandingkan rata-rata selisih kanal, bukan piksel persis.
+      var totalDiff = 0;
+      var samples = 0;
+      for (var y = 0; y < size.height; y += 7) {
+        for (var x = 0; x < size.width; x += 7) {
+          final a = full.getPixel(x, y);
+          final b = composed.getPixel(x, y);
+          totalDiff += (a.r - b.r).abs().toInt() + (a.g - b.g).abs().toInt() + (a.b - b.b).abs().toInt();
+          samples += 3;
+        }
+      }
+      expect(totalDiff / samples, lessThan(2.0), reason: 'ukuran ${size.width}x${size.height}');
+    }
+  });
 }

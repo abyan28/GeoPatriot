@@ -19,6 +19,7 @@ import '../map/map_thumbnail_provider.dart';
 import '../storage/photo_storage_service.dart';
 import '../watermark/models/watermark_configuration.dart';
 import '../watermark/models/watermark_data.dart';
+import '../watermark/native_compositor.dart';
 import '../watermark/watermark_renderer.dart';
 import 'exif_writer.dart';
 import 'models/capture_session.dart';
@@ -37,13 +38,15 @@ class WatermarkPublisher {
     required WatermarkConfiguration Function() watermarkConfigProvider,
     WatermarkRenderer? watermarkRenderer,
     ExifWriter? exifWriter,
+    NativeCompositor? nativeCompositor,
   })  : _storageService = storageService,
         _geocodingProvider = geocodingProvider,
         _mapThumbnailProvider = mapThumbnailProvider,
         _historyService = historyService,
         _watermarkConfigProvider = watermarkConfigProvider,
         _watermarkRenderer = watermarkRenderer ?? WatermarkRenderer(),
-        _exifWriter = exifWriter ?? ExifWriter();
+        _exifWriter = exifWriter ?? ExifWriter(),
+        _nativeCompositor = nativeCompositor ?? const NativeCompositor();
 
   final PhotoStorageService _storageService;
   final GeocodingProvider _geocodingProvider;
@@ -52,6 +55,7 @@ class WatermarkPublisher {
   final WatermarkConfiguration Function() _watermarkConfigProvider;
   final WatermarkRenderer _watermarkRenderer;
   final ExifWriter _exifWriter;
+  final NativeCompositor _nativeCompositor;
 
   /// Batas waktu geocoding/peta sebelum dianggap tidak tersedia (offline).
   static const _onlineTimeout = Duration(seconds: 5);
@@ -76,21 +80,14 @@ class WatermarkPublisher {
     return _appIconBytes;
   }
 
-  /// Proses [stagingOriginal] (file original di staging): geocoding, peta,
-  /// render watermark, tulis EXIF, publikasi ke galeri, catat history.
-  /// Original dipublikasikan ke galeri hanya jika [publishOriginal] true,
-  /// selain itu file stagingnya dihapus.
-  Future<CaptureSession> publish({
-    required File stagingOriginal,
-    required String baseName,
-    required LocationSnapshot location,
-    required DateTime timestamp,
-    required bool publishOriginal,
-  }) async {
+  /// Ambil alamat dan thumbnail peta untuk [location]. Geocoding dan peta
+  /// dijalankan bersamaan dengan batas waktu pendek, jadi di sinyal
+  /// buruk/offline menunggu paling lama ±[_onlineTimeout], bukan dua kali
+  /// berturut-turut. Future TIDAK PERNAH gagal (kegagalan jadi null), jadi
+  /// aman dimulai lebih awal (mis. selagi kamera mengambil foto) dan
+  /// diteruskan ke [publish].
+  Future<OnlineData> fetchOnlineData(LocationSnapshot location) async {
     final config = _watermarkConfigProvider();
-    // Geocoding dan peta dijalankan bersamaan dengan batas waktu pendek, jadi
-    // di sinyal buruk/offline capture menunggu paling lama ±[_onlineTimeout],
-    // bukan dua kali berturut-turut.
     final addressFuture = fetchSafely(
       () => _geocodingProvider.reverseGeocode(latitude: location.latitude, longitude: location.longitude),
       timeout: _onlineTimeout,
@@ -107,6 +104,28 @@ class WatermarkPublisher {
         : Future<MapSnapshot?>.value(null);
     final address = await addressFuture;
     final map = await mapFuture;
+    return (address: address, map: map);
+  }
+
+  /// Proses [stagingOriginal] (file original di staging): geocoding, peta,
+  /// render watermark, tulis EXIF, publikasi ke galeri, catat history.
+  /// Original dipublikasikan ke galeri hanya jika [publishOriginal] true,
+  /// selain itu file stagingnya dihapus. [onlineData] opsional: hasil
+  /// [fetchOnlineData] yang sudah dimulai pemanggil; bila null diambil di sini.
+  Future<CaptureSession> publish({
+    required File stagingOriginal,
+    required String baseName,
+    required LocationSnapshot location,
+    required DateTime timestamp,
+    required bool publishOriginal,
+    Future<OnlineData>? onlineData,
+  }) async {
+    final config = _watermarkConfigProvider();
+    final stopwatch = Stopwatch()..start();
+    final online = await (onlineData ?? fetchOnlineData(location));
+    final address = online.address;
+    final map = online.map;
+    _logPerf('geocode+peta (tunggu)', stopwatch);
 
     final watermarkData = WatermarkData(
       location: location,
@@ -116,22 +135,23 @@ class WatermarkPublisher {
       map: map,
     );
     final appIconBytes = await _loadAppIconBytes();
-    final sourceBytes = await stagingOriginal.readAsBytes();
-    final processedBytes = await compute(
-      _renderWatermarkInIsolate,
-      _WatermarkRenderPayload(
-        sourceImageBytes: sourceBytes,
-        data: watermarkData,
-        config: config,
-        appIconBytes: appIconBytes,
-        renderer: _watermarkRenderer,
-      ),
+    stopwatch.reset();
+    final stagingProcessed = await _renderToStaging(
+      stagingOriginal: stagingOriginal,
+      baseName: baseName,
+      data: watermarkData,
+      config: config,
+      appIconBytes: appIconBytes,
     );
-    final stagingProcessed = await _storageService.saveProcessed(processedBytes, baseName: baseName);
+    _logPerf('render watermark', stopwatch);
 
+    stopwatch.reset();
     await _writeExifSafely(stagingProcessed, location, timestamp);
+    _logPerf('tulis EXIF', stopwatch);
 
+    stopwatch.reset();
     final processedFile = await _publishProcessedWithRetry(stagingProcessed, baseName);
+    _logPerf('publikasi ke galeri', stopwatch);
 
     final File originalFile;
     if (publishOriginal) {
@@ -160,6 +180,64 @@ class WatermarkPublisher {
       address: address,
       map: map,
     );
+  }
+
+  /// Render watermark ke file processed di staging. Jalur cepat: kompositor
+  /// native menempelkan panel kecil ke foto penuh tanpa dekode/encode JPEG di
+  /// Dart. Bila native tidak tersedia atau gagal, jatuh ke jalur Dart
+  /// (`WatermarkRenderer.render` di isolate) sehingga hasilnya tetap ada.
+  Future<File> _renderToStaging({
+    required File stagingOriginal,
+    required String baseName,
+    required WatermarkData data,
+    required WatermarkConfiguration config,
+    required Uint8List? appIconBytes,
+  }) async {
+    final size = await _nativeCompositor.imageSize(stagingOriginal.path);
+    if (size != null) {
+      try {
+        final overlay = await compute(
+          _renderOverlayInIsolate,
+          _OverlayRenderPayload(
+            imageWidth: size.width,
+            imageHeight: size.height,
+            data: data,
+            config: config,
+            appIconBytes: appIconBytes,
+            renderer: _watermarkRenderer,
+          ),
+        );
+        final target = await _storageService.processedStagingFile(baseName);
+        final ok = await _nativeCompositor.composite(
+          sourcePath: stagingOriginal.path,
+          overlayPng: overlay.png,
+          x: overlay.x,
+          y: overlay.y,
+          quality: WatermarkRenderer.jpegQuality,
+          outputPath: target.path,
+        );
+        if (ok) return target;
+      } catch (e) {
+        debugPrint('Kompositor native gagal, memakai render Dart: $e');
+      }
+    }
+
+    final sourceBytes = await stagingOriginal.readAsBytes();
+    final processedBytes = await compute(
+      _renderWatermarkInIsolate,
+      _WatermarkRenderPayload(
+        sourceImageBytes: sourceBytes,
+        data: data,
+        config: config,
+        appIconBytes: appIconBytes,
+        renderer: _watermarkRenderer,
+      ),
+    );
+    return _storageService.saveProcessed(processedBytes, baseName: baseName);
+  }
+
+  void _logPerf(String stage, Stopwatch stopwatch) {
+    debugPrint('[perf] publish: $stage ${stopwatch.elapsedMilliseconds} ms');
   }
 
   /// Publikasikan foto processed ke galeri; coba sekali lagi bila gagal
@@ -224,6 +302,41 @@ Future<Uint8List> _renderWatermarkInIsolate(_WatermarkRenderPayload payload) asy
     appIconBytes: payload.appIconBytes,
   );
 }
+
+/// Payload untuk render panel overlay (jalur kompositor native).
+class _OverlayRenderPayload {
+  const _OverlayRenderPayload({
+    required this.imageWidth,
+    required this.imageHeight,
+    required this.data,
+    required this.config,
+    this.appIconBytes,
+    this.renderer,
+  });
+
+  final int imageWidth;
+  final int imageHeight;
+  final WatermarkData data;
+  final WatermarkConfiguration config;
+  final Uint8List? appIconBytes;
+  final WatermarkRenderer? renderer;
+}
+
+Future<WatermarkOverlay> _renderOverlayInIsolate(_OverlayRenderPayload payload) async {
+  await initializeDateFormatting('id_ID');
+  final renderer = payload.renderer ?? WatermarkRenderer();
+  return renderer.renderOverlay(
+    imageWidth: payload.imageWidth,
+    imageHeight: payload.imageHeight,
+    data: payload.data,
+    config: payload.config,
+    appIconBytes: payload.appIconBytes,
+  );
+}
+
+/// Alamat dan peta hasil [WatermarkPublisher.fetchOnlineData]; keduanya null
+/// bila tidak tersedia (offline/timeout).
+typedef OnlineData = ({AddressSnapshot? address, MapSnapshot? map});
 
 /// Foto sudah dirender tetapi gagal disimpan ke galeri (izin ditolak,
 /// penyimpanan penuh, dll).

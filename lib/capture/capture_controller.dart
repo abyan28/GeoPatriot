@@ -80,18 +80,26 @@ class CaptureController extends ChangeNotifier {
       final location = manual != null && manual.hasCoordinates
           ? manual.toLocationSnapshot(capturedAt: timestamp)
           : await _locationService.freezeSnapshot();
+      // Geocoding + peta dimulai SEKARANG, paralel dengan pengambilan foto,
+      // bukan menunggu foto selesai.
+      final onlineData = _publisher.fetchOnlineData(location);
+      final stopwatch = Stopwatch()..start();
       final photo = await _cameraService.takePicture();
+      debugPrint('[perf] capture: takePicture ${stopwatch.elapsedMilliseconds} ms');
       final baseName = await _storageService.reserveBaseName(timestamp);
-      final stagingOriginal = await _storageService.saveOriginal(photo.path, baseName: baseName);
+      final stagingOriginal = await _storageService.saveOriginal(photo.path, baseName: baseName, move: true);
       await _storageService.deleteQuietly(photo.path);
 
+      stopwatch.reset();
       lastSession = await _publisher.publish(
         stagingOriginal: stagingOriginal,
         baseName: baseName,
         location: location,
         timestamp: timestamp,
         publishOriginal: _saveOriginalProvider(),
+        onlineData: onlineData,
       );
+      debugPrint('[perf] capture: publish total ${stopwatch.elapsedMilliseconds} ms');
       status = CaptureStatus.success;
     } on LocationAccessException catch (e) {
       errorMessage = e.userMessage;
