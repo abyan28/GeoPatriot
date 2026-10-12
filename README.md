@@ -14,10 +14,16 @@ Fase 0-13 dari `workflow-free-first.md` sudah selesai (lihat
 
 - Camera: preview, shutter, switch kamera, orientasi capture dikunci ke
   posisi device saat ini.
+  Resolusi foto memakai `ResolutionPreset.max` (4:3, ±12 MP di Galaxy S25+);
+  preset `ultraHigh` (4K 16:9) dihindari karena menghasilkan pita hijau dan
+  warna bergeser pada Samsung S25+ (lihat `agents/notes.md` butir 13).
 - Location: status GPS live + kategori akurasi, freeze snapshot saat capture.
 - Watermark: panel lokasi/alamat/koordinat/tanggal/waktu/akurasi/altitude +
   thumbnail peta, 3 template (Default/Ringkas/Detail), sepenuhnya bisa
-  dikonfigurasi lewat Settings.
+  dikonfigurasi lewat Settings. Panel digambar di Dart lalu ditempel ke foto
+  penuh oleh kompositor native Android (`MainActivity.kt`,
+  `lib/watermark/native_compositor.dart`); bila native tidak tersedia
+  otomatis memakai render Dart penuh.
 - Reverse geocoding & map thumbnail: **LocationIQ** (butuh API key gratis,
   lihat bagian "Menjalankan project" di bawah).
 - EXIF: GPS + DateTimeOriginal ditulis ke file processed (best-effort).

@@ -5,6 +5,9 @@
 - [x] kenapa fitur galeri di aplikasinya ketika sebuah foto di galeri tersebut dihapus melalui galeri bawaan HP, terdapat jejaknya di galeri aplikasi. Susah jelaskannya, aku kasih ss-nya saja. "D:\Aplikasi\GeoPatriot\referensi\tampak galeri apps.jpg" dan "D:\Aplikasi\GeoPatriot\referensi\tampilan foto yg dihapus.jpg".
 - [x] Switcher camera depannya sepertinya bermasalah. Coba cek deh. Tiap kali tekan tombol switcher ke kamera depan, layar selalu black gitu dan kayak hang. Ada juga muncul error seperti berikut: "D:\Aplikasi\GeoPatriot\referensi\Screenshot_20261006_060704.jpg". Bahkan ketika kamera depan berhasil diakses, ketika kembali ke kamera belakang juga layar jadi black dan kayak hang gitu. Coba dicek lagi ya.
 - [x] Oh iya, untuk referensi pengerjaan tambahan fiturnya bisa coba dicek ke folder "D:\Aplikasi\GeoPatriot Web" ini ya. Itu versi web dari aplikasi ini. (dipakai sebagai acuan parser koordinat dan alur impor foto)
+- [x] (12 Okt 2026) Kenapa file foto hanya ratusan KB / 2 MP padahal kamera HP berMP besar? → resolusi dinaikkan ke 12 MP.
+- [x] (12 Okt 2026) Hasil foto ada garis hijau dan blur warna (`referensi/bug hasil foto.jpg`, `bug hasil foto 2.jpg`).
+- [x] (12 Okt 2026) Proses setelah shutter terlalu lama dengan preset tetap → komposit watermark dipindah ke native.
 
 ---
 
@@ -64,11 +67,34 @@ Semua item di atas sudah dikerjakan, di-commit per item, lolos `flutter analyze`
 - Foto ter-crop saat dicubit: `InteractiveViewer` di dalam `Center` menyusut ke kotak gambar dan memotong → kini mengisi seluruh halaman.
 - Satu jari malah pindah foto: `PageView` dikunci saat foto di-zoom; tambah double-tap (1× ↔ 2,5×); `cacheWidth` 2400.
 
+## 12. Resolusi foto 2 MP → 12 MP (12 Okt 2026)
+- Penyebab file kecil: `ResolutionPreset.veryHigh` = 1920×1080 ≈ 2 MP, dan preset yang sama dipakai preview DAN `takePicture()`. Kompresi (JPEG quality 90) bukan penyebab. "FHD" memang 2 MP menurut definisinya; 8 MP pada 16:9 berarti 3840×2160 (4K), jadi tidak ada "FHD 8 MP".
+- Percobaan 1: `ultraHigh` (3840×2160, ~8 MP) → file ±1,5 MB tetapi bermasalah (butir 13).
+- Perbaikan akhir: `ResolutionPreset.max` di `camera_controller_service.dart` (`_openCamera`). Di Galaxy S25+ (SM-S936B) hasilnya 4:3 ±12 MP, file 2,x MB. Preview jadi 4:3; UI sudah memakai `controller.value.aspectRatio` sehingga watermark live tetap proporsional.
+- Batasan: plugin `camera` hanya punya preset diskret (720p/1080p/2160p/max), tidak ada `ResolutionSelector` CameraX, jadi 4:3 ~8 MP persis tidak bisa dipilih.
+
+## 13. Pita hijau 32 px + blur warna pada foto 4K (12 Okt 2026)
+- Gejala (`referensi/bug hasil foto*.jpg`): pita hijau tepat 32 piksel di tepi sensor-bawah (landscape baris 2128-2159 dari 2160; portrait kolom 0-31 setelah rotasi EXIF), warna ±RGB(0,217,1) = data YUV nol; bercak biru/cyan bergeser dari tepi objek (plane chroma tidak sejajar dengan Y) sementara luminans normal.
+- Diagnosa: foto ORIGINAL (tanpa watermark) di galeri juga cacat → JPEG dari kamera sudah rusak pada jalur 3840×2160 (16:9 dari sensor 4:3), bukan dekoder `image` / renderer. Pola 32 px (= 2 MCU JPEG 4:2:0) + chroma bergeser = tanda error stride/padding YUV di sisi HAL/CameraX Samsung. Pada 1080p tidak muncul.
+- Perbaikan: hindari `ultraHigh`, pakai `max` (butir 12). Terkonfirmasi bersih di HP. Cadangan bila `max` bermasalah di perangkat lain: kembali ke `veryHigh` (bersih, 2 MP).
+
+## 14. Proses setelah shutter lama pada 12 MP (12 Okt 2026)
+- Penyebab: dekode + `bakeOrientation` + encode ulang JPEG 12 MP oleh paket Dart `image` (pure Dart, satu thread) di `watermark_renderer.dart`. Menggambar panel/teks sendiri murah; tanpa watermark foto cukup disalin. `compute()` sudah mencegah UI freeze tetapi tidak mempercepat. Urutan lama juga serial: geocode+peta (sampai 5 dtk) baru dimulai SETELAH foto selesai.
+- Perbaikan (preset tetap `max`):
+  - Kompositor native: `MainActivity.kt` menambah `MethodChannel('geopatriot/compositor')` (`imageSize`, `composite`) memakai `BitmapFactory` + `Canvas`: putar sesuai EXIF, tempel overlay PNG, simpan JPEG quality 90 di thread latar. Wrapper Dart: `lib/watermark/native_compositor.dart`.
+  - `WatermarkRenderer` dipecah menjadi `_layout` (perhitungan, memakai `watermarkScaleFor`) + `_paint`. `render()` (jalur Dart penuh, dipakai tes dan fallback) dan `renderOverlay()` (hanya panel + lencana ke kanvas RGBA kecil, PNG) memakai layout yang sama sehingga tampilan identik; ada tes yang membandingkan keduanya.
+  - `WatermarkPublisher._renderToStaging`: coba native dulu; bila `imageSize`/`composite` gagal atau channel tidak ada (tes unit) jatuh ke jalur Dart lama.
+  - `WatermarkPublisher.fetchOnlineData()` + parameter `onlineData` di `publish()`: geocode+peta dimulai paralel dengan `takePicture()` di `CaptureController.capture()` (impor galeri tetap memanggilnya di dalam `publish`).
+  - `PhotoStorageService.saveOriginal(move: true)` memakai rename (fallback salin) untuk file sementara kamera; impor galeri tetap menyalin. Tambah `processedStagingFile()`.
+- Log waktu per tahap tetap ada: `adb logcat -s flutter | grep perf` → `[perf] capture: takePicture`, `[perf] publish: geocode+peta (tunggu)`, `render watermark`, `tulis EXIF`, `publikasi ke galeri`, `capture: publish total`.
+- Hasil: dikonfirmasi user "sudah cepat" di HP. `flutter analyze` bersih, 62 tes lolos (tes baru: overlay ditempel = render penuh pada 1080×1920, 1920×1080, 4000×3000).
+- Catatan: hasil native tidak membawa EXIF kamera (sama seperti jalur Dart); GPS/waktu tetap ditulis `ExifWriter`. Bitmap 12 MP ≈ 48 MB heap (+ salinan saat dirotasi); bila OOM, publisher otomatis jatuh ke jalur Dart.
+
 ## Perlu diuji di HP (belum dikonfirmasi)
 - Ukuran kotak watermark live vs hasil setelah perbaikan skala (item 10).
 - Zoom detail foto: tidak terpotong, pan satu jari, double-tap, swipe antar foto di 1× (item 11).
 - Mode pesawat di luar ruangan: watermark berisi koordinat tanpa alamat/peta, waktu proses ≤ ±6 dtk.
-- Waktu render foto 1080p (jika lambat, kembali ke preset lebih rendah).
+- ~~Waktu render foto 1080p~~ → sudah terjawab: preset `max` (12 MP) cepat setelah kompositor native (butir 14). Belum diuji: kamera depan di semua orientasi, foto dengan EXIF mirror, perangkat lain selain Galaxy S25+.
 - Impor foto galeri (ber-EXIF GPS dan tanpa), input manual, watermark di 4 orientasi, riwayat sinkron.
 
 ## Catatan teknis
@@ -77,4 +103,6 @@ Semua item di atas sudah dikerjakan, di-commit per item, lolos `flutter analyze`
 - Rilis GitHub: repo pindah ke `abyan28/GeoPatriot`; `gh release create/upload ... --repo abyan28/GeoPatriot`. Verifikasi tanda tangan: `apksigner verify --print-certs` dengan `JAVA_HOME` = JDK Android Studio (`jbr`).
 - Insiden v1.1.0: APK rilis pertama terbit tanpa key (key kosong), diganti dengan `gh release upload --clobber` setelah diuji di HP.
 - Pasang ke HP lewat wireless debugging: `adb pair IP:PORT_PAIRING` (sekali), lalu `adb connect IP:PORT_KONEKSI` (port berubah tiap diaktifkan ulang), `adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`. Bila tanda tangan beda, uninstall dulu.
+- Build uji cepat (bash, tanpa `--obfuscate`): `KEY=$(grep '^NEXT_PUBLIC_LOCATIONIQ_API_KEY=' "../GeoPatriot Web/.env.local" | cut -d= -f2- | tr -d '\r' | xargs)`, `ENC=$(dart run tool/encode_api_key.dart "$KEY" | tail -1)`, lalu `flutter build apk --release --split-per-abi --dart-define=LOCATIONIQ_API_KEY_ENCODED="$ENC"` dan `adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`.
+- Heredoc Python berisi tanda kutip tiga/apostrof di tool Bash bisa gagal ("unexpected EOF"); tulis skrip ke file dulu lalu jalankan.
 - Semua commit masih lokal, belum di-push.

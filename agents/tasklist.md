@@ -363,3 +363,17 @@ Mengacu ke `agents/workflow-free-first.md`. Centang `[✓]` + ✅ setiap fase/ta
   * **File Diubah**: `lib/capture/capture_controller.dart`, `lib/camera/widgets/fixed_camera_preview.dart`, `lib/camera/camera_screen.dart`.
   * **VERIFIKASI**: `flutter analyze` 0 issues (bersih), `flutter test` 38/38 tests lolos (100% pass).
 
+
+## Fase Peningkatan Resolusi Foto & Kecepatan Proses — Preset max + Kompositor Native
+- [✓] ✅ Resolusi foto 2 MP → 12 MP, bug pita hijau 4K, dan percepatan proses (Selesai, 12 Okt 2026)
+  * **Masalah 1 (file kecil)**: `ResolutionPreset.veryHigh` = 1920x1080 ≈ 2 MP dan dipakai preview + `takePicture()`. Bukan masalah kompresi. FHD tidak mungkin 8 MP; 8 MP pada 16:9 = 4K.
+  * **Masalah 2 (garis hijau + blur warna)**: `ultraHigh` (3840x2160) menghasilkan JPEG kamera cacat di Galaxy S25+: pita hijau 32 px di tepi sensor-bawah dan chroma bergeser. Foto original tanpa watermark juga cacat, jadi sumbernya HAL/CameraX, bukan dekoder `image`.
+  * **Solusi 1+2**: `camera_controller_service.dart` memakai `ResolutionPreset.max` (4:3, ±12 MP). Bersih dan file 2,x MB.
+  * **Masalah 3 (proses lama)**: dekode + `bakeOrientation` + encode JPEG 12 MP di Dart `image` (single-thread), ditambah geocode+peta yang baru dimulai setelah foto selesai.
+  * **Solusi 3**:
+    1. `MainActivity.kt`: `MethodChannel(geopatriot/compositor)` dengan `imageSize` dan `composite` (BitmapFactory + Canvas, putar sesuai EXIF, JPEG q90, thread latar). Wrapper `lib/watermark/native_compositor.dart`.
+    2. `watermark_renderer.dart`: dipecah `_layout` + `_paint`; `renderOverlay()` menghasilkan panel RGBA kecil (PNG) + posisi; `render()` tetap untuk fallback/tes. Tampilan identik.
+    3. `watermark_publisher.dart`: `_renderToStaging` (native dulu, fallback Dart), `fetchOnlineData()` + parameter `onlineData`, log `[perf]` per tahap.
+    4. `capture_controller.dart`: geocode+peta dimulai paralel dengan `takePicture()`. `photo_storage_service.dart`: `saveOriginal(move: true)` (rename) dan `processedStagingFile()`.
+  * **File Diubah**: `lib/camera/camera_controller_service.dart`, `lib/capture/capture_controller.dart`, `lib/capture/watermark_publisher.dart`, `lib/storage/photo_storage_service.dart`, `lib/watermark/watermark_renderer.dart`, `lib/watermark/native_compositor.dart` (baru), `android/.../MainActivity.kt`, `test/watermark_renderer_test.dart`.
+  * **VERIFIKASI**: `flutter analyze` 0 issues, `flutter test` 62/62 lolos (tes baru overlay = render penuh). Diuji di Galaxy S25+ (release, wireless debugging): foto 12 MP tanpa pita hijau dan proses cepat (dikonfirmasi user).
