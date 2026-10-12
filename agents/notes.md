@@ -8,6 +8,7 @@
 - [x] (12 Okt 2026) Kenapa file foto hanya ratusan KB / 2 MP padahal kamera HP berMP besar? → resolusi dinaikkan ke 12 MP.
 - [x] (12 Okt 2026) Hasil foto ada garis hijau dan blur warna (`referensi/bug hasil foto.jpg`, `bug hasil foto 2.jpg`).
 - [x] (12 Okt 2026) Proses setelah shutter terlalu lama dengan preset tetap → komposit watermark dipindah ke native.
+- [x] (12 Okt 2026) Mode Survei untuk sensus: nama file otomatis `objek-kategori-lokasi.jpg`, kategori dokumen tanpa watermark dan live watermark disembunyikan.
 
 ---
 
@@ -89,6 +90,20 @@ Semua item di atas sudah dikerjakan, di-commit per item, lolos `flutter analyze`
 - Log waktu per tahap tetap ada: `adb logcat -s flutter | grep perf` → `[perf] capture: takePicture`, `[perf] publish: geocode+peta (tunggu)`, `render watermark`, `tulis EXIF`, `publikasi ke galeri`, `capture: publish total`.
 - Hasil: dikonfirmasi user "sudah cepat" di HP. `flutter analyze` bersih, 62 tes lolos (tes baru: overlay ditempel = render penuh pada 1080×1920, 1920×1080, 4000×3000).
 - Catatan: hasil native tidak membawa EXIF kamera (sama seperti jalur Dart); GPS/waktu tetap ditulis `ExifWriter`. Bitmap 12 MP ≈ 48 MB heap (+ salinan saat dirotasi); bila OOM, publisher otomatis jatuh ke jalur Dart.
+
+## 15. Mode Survei: nama file otomatis + kategori tanpa watermark (12 Okt 2026)
+- Kebutuhan: surveyor sensus memotret lahan, rumah, dan dokumen (KK, KTP, SHM) per rumah penduduk; nama file harus seragam (`budi-lahan-sp3.jpg`) dan foto dokumen tidak boleh tertutup watermark.
+- Keputusan desain (hasil diskusi): lokasi SP diisi jarang dan tersimpan; objek (rumah/penduduk) diketik tiap rumah dan SENGAJA tidak dipersist; kode opsional untuk nama kembar; kategori bisa diatur (bawaan Lahan, Rumah ber-watermark; KK, KTP, SHM, Dokumen lain bersih); bentrok nama pertama polos lalu `-2`, `-3`; tombol manual "Objek berikutnya" mengosongkan objek dan shutter menolak memotret sampai diisi; dokumen tetap di album galeri yang sama; impor galeri tidak berubah.
+- Implementasi:
+  - `lib/survey/`: `survey_naming.dart` (sanitasi + `buildSurveyBaseName` + `pickAvailableName`, murni), `models/survey_category.dart`, `survey_service.dart` (shared_preferences key `survey_json`, terpisah dari `AppSettings` supaya "reset setelan" tidak menghapus data sesi), `survey_controller.dart`.
+  - `PhotoStorageService.reserveNamedBaseName` (cek bentrok album processed + original) dan `promoteOriginalToProcessed` (rename JPEG kamera ke staging processed).
+  - `CaptureController`: `surveyShotProvider`/`surveyEnabledProvider`; mode aktif tapi data belum lengkap → `StateError`; kategori tanpa watermark melewati `fetchOnlineData`.
+  - `WatermarkPublisher.publish(applyWatermark: false)` → `_publishPlain`: tanpa render/geocode/peta, EXIF GPS+waktu tetap ditulis, tanpa salinan original (`originalPath = processedPath`).
+  - UI: `camera/widgets/survey_strip.dart` (chip objek, kategori, pratinjau nama, "Objek berikutnya"), `survey_object_sheet.dart`; `camera_screen.dart` menyembunyikan live watermark untuk kategori tanpa watermark, memuat ulang alamat/peta live saat kembali ke kategori ber-watermark, dan menambah clearance bawah (`surveyStripHeight`). Pengaturan: bagian "Mode Survei" di `settings_screen.dart` (switch, lokasi, kategori, catatan privasi).
+- Tes: `flutter analyze` bersih, 80 tes lolos (tambahan `survey_naming_test.dart`, `survey_controller_test.dart`). Diuji user di HP: alur nama file dan kategori berjalan.
+- **Masalah diketahui (belum diperbaiki)**: saat Mode Survei aktif, tata letak UI kamera berantakan (strip survei menumpuk dengan elemen lain, terutama di landscape/layar kecil). Perbaikan UI sedang dikerjakan user lewat Gemini; area terkait: `survey_strip.dart` (tinggi tetap 112/168, chip diputar `RotatedBox`), `Positioned(bottom: 32+80+8)` di `camera_screen.dart`, clearance live watermark/zoom ruler (`bottomExtra`).
+- Catatan privasi: foto KK/KTP/SHM masuk galeri publik (`Pictures/GeoPatriot`), terbaca aplikasi lain dan ikut backup cloud galeri. Opsi penyimpanan privat dicatat sebagai pekerjaan lanjutan.
+- Di luar cakupan: ganti nama file yang sudah ada (salah ketik), ekspor CSV daftar objek/foto, penamaan foto impor galeri, penyimpanan privat dokumen.
 
 ## Perlu diuji di HP (belum dikonfirmasi)
 - Ukuran kotak watermark live vs hasil setelah perbaikan skala (item 10).

@@ -17,6 +17,10 @@ Fase 0-13 dari `workflow-free-first.md` sudah selesai (lihat
   Resolusi foto memakai `ResolutionPreset.max` (4:3, ±12 MP di Galaxy S25+);
   preset `ultraHigh` (4K 16:9) dihindari karena menghasilkan pita hijau dan
   warna bergeser pada Samsung S25+ (lihat `agents/notes.md` butir 13).
+- Mode Survei (opsional, Pengaturan): nama file otomatis
+  `objek-kategori-lokasi.jpg`, kategori dokumen (KK/KTP/SHM) tanpa watermark
+  dan tanpa live watermark. Catatan: tata letak UI kamera pada mode ini
+  masih dalam perbaikan (lihat `agents/notes.md` butir 15).
 - Location: status GPS live + kategori akurasi, freeze snapshot saat capture.
 - Watermark: panel lokasi/alamat/koordinat/tanggal/waktu/akurasi/altitude +
   thumbnail peta, 3 template (Default/Ringkas/Detail), sepenuhnya bisa

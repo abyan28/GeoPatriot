@@ -377,3 +377,16 @@ Mengacu ke `agents/workflow-free-first.md`. Centang `[✓]` + ✅ setiap fase/ta
     4. `capture_controller.dart`: geocode+peta dimulai paralel dengan `takePicture()`. `photo_storage_service.dart`: `saveOriginal(move: true)` (rename) dan `processedStagingFile()`.
   * **File Diubah**: `lib/camera/camera_controller_service.dart`, `lib/capture/capture_controller.dart`, `lib/capture/watermark_publisher.dart`, `lib/storage/photo_storage_service.dart`, `lib/watermark/watermark_renderer.dart`, `lib/watermark/native_compositor.dart` (baru), `android/.../MainActivity.kt`, `test/watermark_renderer_test.dart`.
   * **VERIFIKASI**: `flutter analyze` 0 issues, `flutter test` 62/62 lolos (tes baru overlay = render penuh). Diuji di Galaxy S25+ (release, wireless debugging): foto 12 MP tanpa pita hijau dan proses cepat (dikonfirmasi user).
+
+## Fase Mode Survei — Nama File Otomatis & Kategori Tanpa Watermark
+- [✓] ✅ Mode Survei untuk sensus penduduk (Selesai, 12 Okt 2026; perbaikan tata letak UI masih tertunda)
+  * **Kebutuhan**: nama file `{objek}[-{kode}]-{kategori}-{lokasi}.jpg` per rumah penduduk; foto dokumen (KK/KTP/SHM) bersih tanpa watermark, live watermark disembunyikan.
+  * **Desain**: lokasi SP persisten, objek diketik tiap rumah (tidak dipersist, "Objek berikutnya" mengosongkan dan memblokir shutter), kode opsional untuk nama kembar, kategori dapat diatur dengan saklar watermark, bentrok nama `-2`/`-3`, dokumen di album galeri yang sama, impor galeri tidak berubah.
+  * **Implementasi**:
+    1. `lib/survey/` baru: `survey_naming.dart`, `models/survey_category.dart`, `survey_service.dart`, `survey_controller.dart`; `app.dart` memakai `MultiProvider`.
+    2. `photo_storage_service.dart`: `reserveNamedBaseName`, `promoteOriginalToProcessed`.
+    3. `capture_controller.dart` + `watermark_publisher.dart`: `SurveyShot`, `applyWatermark: false` → `_publishPlain` (tanpa render/geocode/peta, EXIF tetap, tanpa original ganda).
+    4. UI: `survey_strip.dart`, `survey_object_sheet.dart`, perubahan `camera_screen.dart`; bagian "Mode Survei" di `settings_screen.dart`.
+  * **File Diubah**: `lib/app.dart`, `lib/camera/camera_screen.dart`, `lib/capture/capture_controller.dart`, `lib/capture/watermark_publisher.dart`, `lib/settings/settings_screen.dart`, `lib/storage/photo_storage_service.dart`, `lib/camera/widgets/survey_strip.dart` (baru), `lib/camera/widgets/survey_object_sheet.dart` (baru), `lib/survey/*` (baru), `test/survey_naming_test.dart`, `test/survey_controller_test.dart`.
+  * **VERIFIKASI**: `flutter analyze` 0 issues, `flutter test` 80/80 lolos. Diuji user di Galaxy S25+ (release): nama file dan kategori dokumen berfungsi.
+- [ ] Perbaiki tata letak UI kamera saat Mode Survei aktif (strip survei menumpuk/berantakan). Dikerjakan user lewat Gemini.
