@@ -161,9 +161,11 @@ class CameraControllerService {
 
     final newController = CameraController(
       _cameras[index],
-      // veryHigh = 1080p. `high` hanya 1280x720 (0,9 MP), terlalu kecil untuk
-      // foto dokumentasi: preset yang sama dipakai preview DAN pengambilan foto.
-      ResolutionPreset.veryHigh,
+      // max = resolusi tertinggi yang didukung (4:3 penuh sensor, ~12 MP di
+      // Galaxy S25+). `veryHigh` (1080p) hanya ~2 MP; `ultraHigh` (3840x2160,
+      // 16:9) terbukti menghasilkan pita hijau 32 px dan chroma bergeser di
+      // Samsung S25+. Preset yang sama dipakai preview DAN pengambilan foto.
+      ResolutionPreset.max,
       enableAudio: false,
     );
     try {
