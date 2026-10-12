@@ -23,11 +23,11 @@ class SurveyCategory {
 
   /// Daftar bawaan: foto lokasi ber-watermark, dokumen bersih.
   static const defaults = <SurveyCategory>[
-    SurveyCategory(id: 'lahan', label: 'Lahan'),
     SurveyCategory(id: 'rumah', label: 'Rumah'),
+    SurveyCategory(id: 'lahan', label: 'Lahan'),
     SurveyCategory(id: 'kk', label: 'KK', applyWatermark: false),
-    SurveyCategory(id: 'ktp', label: 'KTP', applyWatermark: false),
     SurveyCategory(id: 'shm', label: 'SHM', applyWatermark: false),
-    SurveyCategory(id: 'dokumen-lain', label: 'Dokumen lain', applyWatermark: false),
+    SurveyCategory(id: 'sarpras', label: 'Sarpras'),
+    SurveyCategory(id: 'barang', label: 'Barang'),
   ];
 }

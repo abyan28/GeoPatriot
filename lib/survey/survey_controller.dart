@@ -149,7 +149,34 @@ class SurveyController extends ChangeNotifier {
     await _update(_data.copyWith(categories: categories.where((c) => c.id != id).toList()));
   }
 
-  Future<void> resetCategories() => _update(_data.copyWith(categories: SurveyCategory.defaults));
+  /// Reset seluruh setelan survei ke nilai awal pabrik:
+  /// nama objek, kode objek, lokasi objek ikut dikosongkan.
+  Future<void> resetToDefaults() async {
+    objectName = '';
+    objectCode = '';
+    _selectedCategoryId = null;
+    await _update(
+      const SurveyData(
+        enabled: false,
+        locationName: '',
+        categories: SurveyCategory.defaults,
+        recentObjects: [],
+      ),
+    );
+  }
+
+  /// Kembalikan kategori ke bawaan serta kosongkan objek & lokasi.
+  Future<void> resetCategories() async {
+    objectName = '';
+    objectCode = '';
+    _selectedCategoryId = null;
+    await _update(
+      _data.copyWith(
+        categories: SurveyCategory.defaults,
+        locationName: '',
+      ),
+    );
+  }
 
   Future<void> _update(SurveyData updated) async {
     _data = updated;

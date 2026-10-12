@@ -255,6 +255,9 @@ class SettingsScreen extends StatelessWidget {
     );
     if (confirmed == true) {
       await controller.resetToDefaults();
+      if (context.mounted) {
+        await context.read<SurveyController>().resetToDefaults();
+      }
     }
   }
 }
@@ -801,7 +804,7 @@ class _SurveySettingsSectionState extends State<_SurveySettingsSection> {
                   icon: const Icon(Icons.add),
                   label: const Text('Tambah kategori'),
                 ),
-                TextButton(onPressed: survey.resetCategories, child: const Text('Kembalikan bawaan')),
+                TextButton(onPressed: survey.resetToDefaults, child: const Text('Kembalikan bawaan')),
               ],
             ),
           ),

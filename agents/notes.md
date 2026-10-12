@@ -101,9 +101,24 @@ Semua item di atas sudah dikerjakan, di-commit per item, lolos `flutter analyze`
   - `WatermarkPublisher.publish(applyWatermark: false)` → `_publishPlain`: tanpa render/geocode/peta, EXIF GPS+waktu tetap ditulis, tanpa salinan original (`originalPath = processedPath`).
   - UI: `camera/widgets/survey_strip.dart` (chip objek, kategori, pratinjau nama, "Objek berikutnya"), `survey_object_sheet.dart`; `camera_screen.dart` menyembunyikan live watermark untuk kategori tanpa watermark, memuat ulang alamat/peta live saat kembali ke kategori ber-watermark, dan menambah clearance bawah (`surveyStripHeight`). Pengaturan: bagian "Mode Survei" di `settings_screen.dart` (switch, lokasi, kategori, catatan privasi).
 - Tes: `flutter analyze` bersih, 80 tes lolos (tambahan `survey_naming_test.dart`, `survey_controller_test.dart`). Diuji user di HP: alur nama file dan kategori berjalan.
-- **Masalah diketahui (belum diperbaiki)**: saat Mode Survei aktif, tata letak UI kamera berantakan (strip survei menumpuk dengan elemen lain, terutama di landscape/layar kecil). Perbaikan UI sedang dikerjakan user lewat Gemini; area terkait: `survey_strip.dart` (tinggi tetap 112/168, chip diputar `RotatedBox`), `Positioned(bottom: 32+80+8)` di `camera_screen.dart`, clearance live watermark/zoom ruler (`bottomExtra`).
+- **Tata letak UI kamera**: selesai diperbaiki menyeluruh pada 13 Okt 2026 (lihat butir 16).
 - Catatan privasi: foto KK/KTP/SHM masuk galeri publik (`Pictures/GeoPatriot`), terbaca aplikasi lain dan ikut backup cloud galeri. Opsi penyimpanan privat dicatat sebagai pekerjaan lanjutan.
 - Di luar cakupan: ganti nama file yang sudah ada (salah ketik), ekspor CSV daftar objek/foto, penamaan foto impor galeri, penyimpanan privat dokumen.
+
+## 16. Perbaikan Tata Letak UI Mode Survei (Portrait & Landscape) + Kategori Baru (13 Okt 2026)
+- Masalah visual awal:
+  - Portrait: Live watermark terdorong ke kiri karena margin asimetris; strip survei menumpuk dengan zoom ruler.
+  - Landscape: Kapsul kategori menindih Zoom Ruler di atas shutter; tombol aksi dan pill GPS bergeser ke kanan menjauhi tepi fisik HP; kolom objek dan tombol "Next Object" menjorok masuk ke dalam layar preview kamera.
+- Solusi & Arsitektur Baru:
+  - **Portrait**: Live watermark 100% simetris di tengah. Kolom objek diletakkan di baris ke-2 atas (`SurveyObjectHeader`). Kapsul kategori bergaya Samsung One UI (`SurveyCategorySlider`): *idle* berupa kapsul ringkas `[ 🏷️ Rumah > ]`, ketika diketuk membuka slider horizontal mengambang dengan tombol `[ ✕ ]`.
+  - **Landscape**:
+    - Kapsul kategori diposisikan di **Sudut Kanan Atas** layar (`Positioned(right: 16, bottom: 96)` pada `quarterTurns: 1`). Bebas >180 dp dari Zoom Ruler. Saat diketuk, slider membuka horizontal ke arah kiri di sepanjang tepi atas layar.
+    - Top HUD menggunakan `CrossAxisAlignment.start` sehingga seluruh tombol aksi dan pill GPS menempel erat ke tepi luar ("mepet ke kiri").
+    - Kolom objek compact dibatasi `maxWidth: 96` (bebas ~25 dp dari layar preview kamera). Tombol "Next Object" diletakkan di bawah kolom objek di sepanjang rel kiri (`[Aksi]` → `[Objek]` → `[Next Object]` → `[GPS]`).
+  - **Panah Dinamis**: Kapsul kategori mengarah ke kanan (`chevron_right`) saat portrait dan ke kiri (`chevron_left`) saat landscape (sesuai arah ekspansi slider). Chip objek di landscape mengarah ke kanan (`chevron_right`).
+  - **Kategori Bawaan Baru**: Rumah (default aktif ber-watermark), Lahan (watermark), KK (dokumen tanpa watermark), SHM (dokumen tanpa watermark), Sarpras (watermark), Barang (watermark).
+  - **Reset Nilai**: `SurveyController.resetToDefaults()` mengosongkan nama objek, kode objek, lokasi objek, serta mereset kategori. Terhubung ke dialog Reset Pengaturan utama dan tombol "Kembalikan bawaan" di pengaturan survei.
+- Tes: `flutter analyze` 0 issues, `flutter test` 93/93 lolos. Diuji via automated test suite.
 
 ## Perlu diuji di HP (belum dikonfirmasi)
 - Ukuran kotak watermark live vs hasil setelah perbaikan skala (item 10).

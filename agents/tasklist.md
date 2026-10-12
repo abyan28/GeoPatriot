@@ -379,7 +379,7 @@ Mengacu ke `agents/workflow-free-first.md`. Centang `[✓]` + ✅ setiap fase/ta
   * **VERIFIKASI**: `flutter analyze` 0 issues, `flutter test` 62/62 lolos (tes baru overlay = render penuh). Diuji di Galaxy S25+ (release, wireless debugging): foto 12 MP tanpa pita hijau dan proses cepat (dikonfirmasi user).
 
 ## Fase Mode Survei — Nama File Otomatis & Kategori Tanpa Watermark
-- [✓] ✅ Mode Survei untuk sensus penduduk (Selesai, 12 Okt 2026; perbaikan tata letak UI masih tertunda)
+- [✓] ✅ Mode Survei untuk sensus penduduk (Selesai, 12 Okt 2026)
   * **Kebutuhan**: nama file `{objek}[-{kode}]-{kategori}-{lokasi}.jpg` per rumah penduduk; foto dokumen (KK/KTP/SHM) bersih tanpa watermark, live watermark disembunyikan.
   * **Desain**: lokasi SP persisten, objek diketik tiap rumah (tidak dipersist, "Objek berikutnya" mengosongkan dan memblokir shutter), kode opsional untuk nama kembar, kategori dapat diatur dengan saklar watermark, bentrok nama `-2`/`-3`, dokumen di album galeri yang sama, impor galeri tidak berubah.
   * **Implementasi**:
@@ -389,4 +389,11 @@ Mengacu ke `agents/workflow-free-first.md`. Centang `[✓]` + ✅ setiap fase/ta
     4. UI: `survey_strip.dart`, `survey_object_sheet.dart`, perubahan `camera_screen.dart`; bagian "Mode Survei" di `settings_screen.dart`.
   * **File Diubah**: `lib/app.dart`, `lib/camera/camera_screen.dart`, `lib/capture/capture_controller.dart`, `lib/capture/watermark_publisher.dart`, `lib/settings/settings_screen.dart`, `lib/storage/photo_storage_service.dart`, `lib/camera/widgets/survey_strip.dart` (baru), `lib/camera/widgets/survey_object_sheet.dart` (baru), `lib/survey/*` (baru), `test/survey_naming_test.dart`, `test/survey_controller_test.dart`.
   * **VERIFIKASI**: `flutter analyze` 0 issues, `flutter test` 80/80 lolos. Diuji user di Galaxy S25+ (release): nama file dan kategori dokumen berfungsi.
-- [ ] Perbaiki tata letak UI kamera saat Mode Survei aktif (strip survei menumpuk/berantakan). Dikerjakan user lewat Gemini.
+- [✓] ✅ Perbaiki tata letak UI kamera saat Mode Survei aktif (Selesai, 13 Okt 2026).
+  * **Masalah**: Tabrakan elemen saat Mode Survei aktif di portrait & landscape (watermark live tergeser asimetris, chip kategori menutupi tombol kamera/zoom ruler, elemen landscape menjorok ke preview camera).
+  * **Solusi**:
+    1. Portrait: Live watermark 100% simetris di tengah. Header objek di baris kedua atas (`SurveyObjectHeader`). Kapsul kategori mengambang di atas tombol shutter (`SurveyCategorySlider` ala Samsung One UI).
+    2. Landscape: Baris Top HUD merapat ke tepi kiri (`CrossAxisAlignment.start`). Kolom objek compact (`maxWidth: 96`) dan tombol "Next Object" diletakkan berurutan sepanjang rel kiri di luar preview kamera. Kapsul kategori diposisikan di sudut Kanan Atas landscape, membuka slider horizontal ke arah kiri, bebas dari Zoom Ruler.
+    3. UX Refinements: Arah panah dinamis (portrait: panah kanan, landscape: panah kiri untuk kategori; panah kanan untuk chip objek landscape). Reset pabrik / kembalikan bawaan mengosongkan objek, kode, lokasi, serta mereset kategori bawaan baru (`Rumah`, `Lahan`, `KK`, `SHM`, `Sarpras`, `Barang`).
+  * **File Diubah**: `lib/camera/camera_screen.dart`, `lib/camera/edge_anchored_rotated.dart`, `lib/camera/live_watermark_overlay.dart`, `lib/camera/widgets/survey_strip.dart`, `lib/survey/models/survey_category.dart`, `lib/survey/survey_controller.dart`, `lib/settings/settings_screen.dart`, `test/survey_controller_test.dart`, `test/survey_strip_test.dart`.
+  * **VERIFIKASI**: `flutter analyze` 0 issues, `flutter test` 93/93 lolos.

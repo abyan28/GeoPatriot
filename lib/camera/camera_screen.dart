@@ -721,7 +721,14 @@ class _CameraBody extends StatelessWidget {
             // (bukan layar penuh) supaya tidak keluar dari frame saat ada
             // letterbox, dengan clearance dari HUD atas & tombol bawah.
             if (cameraReady && controller != null && showLiveWatermark)
-              _buildLiveWatermark(context, constraints, controller!, previewScale, surveyExtra),
+              _buildLiveWatermark(
+                context,
+                constraints,
+                controller!,
+                previewScale,
+                surveyExtra,
+                topExtra: (surveyActive && !quarterTurns.isOdd) ? 44.0 : 0.0,
+              ),
 
             // 3. Zoom Ruler
             if (cameraReady && maxZoom > minZoom)
@@ -809,10 +816,31 @@ class _CameraBody extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _RotatedControl(
                         child: GpsStatusPill(location: liveLocation),
                       ),
+                      // Landscape + Mode Survei: tombol next & objek aktif
+                      // menempati celah antara pill akurasi dan tombol aksi.
+                      // Tombol next berada di sisi kiri objek (sehingga saat
+                      // diputar 90° CCW, tombol next berada tepat di bawah kolom objek).
+                      if (surveyActive && quarterTurns.isOdd)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (survey.objectName.isNotEmpty) ...[
+                              _RotatedControl(
+                                child: SurveyNextObjectButton(survey: survey, compact: true),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            _RotatedControl(
+                              child: SurveyObjectChip(survey: survey, compact: true),
+                            ),
+                          ],
+                        ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -885,15 +913,42 @@ class _CameraBody extends StatelessWidget {
               ),
             ),
 
-            // 6b. Strip Mode Survei (objek, kategori, nama file) tepat di atas
-            // baris shutter.
-            if (surveyActive)
-              Positioned(
-                bottom: 32 + 80 + 8,
-                left: 0,
-                right: 0,
-                child: SurveyStrip(quarterTurns: quarterTurns),
-              ),
+            // 6b. Kontrol Mode Survei.
+            // - Objek: portrait di baris sendiri di bawah HUD; landscape
+            //   disisipkan di dalam HUD (lihat Row HUD di atas).
+            // - Kategori: portrait mengambang di atas baris shutter;
+            //   landscape mengambang di sudut Kanan Atas (Opsi 2).
+            if (surveyActive) ...[
+              if (!quarterTurns.isOdd) ...[
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + _hudHeight,
+                  left: 0,
+                  right: 0,
+                  child: SurveyObjectHeader(survey: survey),
+                ),
+                Positioned(
+                  bottom: 32 + 80 + 12,
+                  left: 0,
+                  right: 0,
+                  child: SurveyCategorySlider(survey: survey, quarterTurns: 0),
+                ),
+              ] else ...[
+                Positioned(
+                  right: quarterTurns == 1 ? 16 : null,
+                  left: quarterTurns == 3 ? 16 : null,
+                  bottom: quarterTurns == 1 ? 96 : null,
+                  top: quarterTurns == 3 ? 96 : null,
+                  child: RotatedBox(
+                    quarterTurns: quarterTurns,
+                    child: SurveyCategorySlider(
+                      survey: survey,
+                      quarterTurns: 0,
+                      isLandscape: true,
+                    ),
+                  ),
+                ),
+              ],
+            ],
 
             // 7. Bottom Control Bar (Galeri + Shutter + Switch Camera)
             // Baris tombol kontrol bawah tetap berada di sisi fisik bawah layar
@@ -935,8 +990,9 @@ class _CameraBody extends StatelessWidget {
     BoxConstraints constraints,
     CameraController controller,
     double previewScale,
-    double bottomExtra,
-  ) {
+    double bottomExtra, {
+    double topExtra = 0,
+  }) {
     // Frame preview: `FixedCameraPreview` memakai AspectRatio(1/aspectRatio)
     // yang ditengahkan di Stack.
     final aspect = 1 / controller.value.aspectRatio;
@@ -953,7 +1009,7 @@ class _CameraBody extends StatelessWidget {
       height,
     );
 
-    final hudBottom = MediaQuery.paddingOf(context).top + _hudHeight + _controlsGap;
+    final hudBottom = MediaQuery.paddingOf(context).top + _hudHeight + _controlsGap + topExtra;
     final controlsTop = constraints.maxHeight - _bottomControlsHeight - bottomExtra;
     final topClearance = (hudBottom - rect.top).clamp(0.0, double.infinity);
     final bottomClearance = (rect.bottom - controlsTop).clamp(0.0, double.infinity);
@@ -1008,7 +1064,9 @@ class _CameraBody extends StatelessWidget {
     final isLandscape = quarterTurns.isOdd;
 
     final portraitLeft = constraints.maxWidth - rulerThickness - edgeMargin;
-    final portraitTop = (constraints.maxHeight - rulerLength) / 2;
+    // Digeser sedikit ke atas dari tengah agar ujung bawahnya tidak menyentuh
+    // badge watermark live di layar yang lebih pendek.
+    final portraitTop = (constraints.maxHeight - rulerLength) / 2 - 24;
     final landscapeLeft = (constraints.maxWidth - rulerLength) / 2;
     final landscapeTop = constraints.maxHeight - landscapeBottomMargin - bottomExtra - rulerThickness;
 

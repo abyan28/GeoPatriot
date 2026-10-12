@@ -23,7 +23,7 @@ void main() {
     final survey = await _loaded();
 
     expect(survey.enabled, isFalse);
-    expect(survey.categories.map((c) => c.id), ['lahan', 'rumah', 'kk', 'ktp', 'shm', 'dokumen-lain']);
+    expect(survey.categories.map((c) => c.id), ['rumah', 'lahan', 'kk', 'shm', 'sarpras', 'barang']);
     expect(survey.isReady, isFalse);
     expect(survey.currentShot, isNull);
   });
@@ -35,7 +35,7 @@ void main() {
     await survey.setObject('Budi');
 
     expect(survey.isReady, isTrue);
-    expect(survey.previewFileName, 'budi-lahan-sp3-kapitanmeo.jpg');
+    expect(survey.previewFileName, 'budi-rumah-sp3-kapitanmeo.jpg');
     expect(survey.currentShot!.applyWatermark, isTrue);
   });
 
@@ -55,13 +55,13 @@ void main() {
     await survey.setEnabled(true);
     await survey.setLocation('SP3');
     await survey.setObject('Budi', code: '12');
-    survey.selectCategory('ktp');
+    survey.selectCategory('kk');
 
     survey.nextObject();
 
     expect(survey.objectName, isEmpty);
     expect(survey.objectCode, isEmpty);
-    expect(survey.selectedCategory!.id, 'lahan');
+    expect(survey.selectedCategory!.id, 'rumah');
     expect(survey.isReady, isFalse);
   });
 
@@ -117,5 +117,24 @@ void main() {
 
     expect(data.enabled, isFalse);
     expect(data.categories, SurveyCategory.defaults);
+  });
+
+  test('resetToDefaults mengosongkan objek, kode, lokasi, dan mengembalikan kategori bawaan', () async {
+    final survey = await _loaded();
+    await survey.setEnabled(true);
+    await survey.setLocation('Lokasi Uji');
+    await survey.setObject('Objek Uji', code: '99');
+    await survey.addCategory('Kategori Baru');
+    survey.selectCategory('kk');
+
+    await survey.resetToDefaults();
+
+    expect(survey.enabled, isFalse);
+    expect(survey.objectName, isEmpty);
+    expect(survey.objectCode, isEmpty);
+    expect(survey.locationName, isEmpty);
+    expect(survey.categories, SurveyCategory.defaults);
+    expect(survey.selectedCategory!.id, 'rumah');
+    expect(survey.isReady, isFalse);
   });
 }
