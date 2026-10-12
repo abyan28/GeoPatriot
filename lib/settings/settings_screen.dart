@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/camera_tokens.dart';
+import '../survey/models/survey_category.dart';
+import '../survey/survey_controller.dart';
 import '../watermark/models/watermark_configuration.dart';
 import '../watermark/models/watermark_position.dart';
 import '../watermark/models/watermark_template.dart';
@@ -194,6 +196,11 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
+          // --- MODE SURVEI ---
+          _SectionHeader('Mode Survei'),
+          const _SurveySettingsSection(),
+          const SizedBox(height: 16),
+
           // --- PENYIMPANAN & RESET ---
           _SectionHeader('Penyimpanan & Sistem'),
           Card(
@@ -207,7 +214,10 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 SwitchListTile(
                   title: const Text('Simpan foto asli'),
-                  subtitle: const Text('Foto tanpa watermark tetap disimpan terpisah ke galeri'),
+                  subtitle: const Text(
+                    'Foto tanpa watermark tetap disimpan terpisah ke galeri '
+                    '(tidak berlaku untuk kategori survei tanpa watermark)',
+                  ),
                   value: controller.settings.saveOriginal,
                   onChanged: controller.setSaveOriginal,
                 ),
@@ -665,6 +675,146 @@ class _CustomTextInputState extends State<_CustomTextInput> {
             : null,
       ),
       onChanged: widget.onChanged,
+    );
+  }
+}
+
+/// Pengaturan Mode Survei: aktif/nonaktif, lokasi SP, dan daftar kategori
+/// (label + apakah memakai watermark).
+class _SurveySettingsSection extends StatefulWidget {
+  const _SurveySettingsSection();
+
+  @override
+  State<_SurveySettingsSection> createState() => _SurveySettingsSectionState();
+}
+
+class _SurveySettingsSectionState extends State<_SurveySettingsSection> {
+  late final TextEditingController _location;
+
+  @override
+  void initState() {
+    super.initState();
+    _location = TextEditingController(text: context.read<SurveyController>().locationName);
+  }
+
+  @override
+  void dispose() {
+    _location.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addCategory(SurveyController survey) async {
+    final label = TextEditingController();
+    var applyWatermark = true;
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Kategori Baru'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: label,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Nama kategori', hintText: 'mis. Jalan'),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Pakai watermark'),
+                value: applyWatermark,
+                onChanged: (value) => setDialogState(() => applyWatermark = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Tambah')),
+          ],
+        ),
+      ),
+    );
+    if (created == true) {
+      await survey.addCategory(label.text, applyWatermark: applyWatermark);
+    }
+    label.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final survey = context.watch<SurveyController>();
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            title: const Text('Aktifkan Mode Survei'),
+            subtitle: const Text(
+              'Nama file otomatis: objek-kategori-lokasi. Kategori dokumen tanpa watermark.',
+            ),
+            value: survey.enabled,
+            onChanged: survey.setEnabled,
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: TextField(
+              controller: _location,
+              decoration: const InputDecoration(
+                labelText: 'Lokasi / SP',
+                hintText: 'mis. SP3 Kapitanmeo',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: survey.setLocation,
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Text('Kategori foto', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          for (final SurveyCategory category in survey.categories)
+            SwitchListTile(
+              dense: true,
+              title: Text(category.label),
+              subtitle: Text(category.applyWatermark ? 'Pakai watermark' : 'Tanpa watermark (bersih)'),
+              value: category.applyWatermark,
+              onChanged: (value) => survey.upsertCategory(category.copyWith(applyWatermark: value)),
+              secondary: IconButton(
+                tooltip: 'Hapus kategori',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: survey.categories.length <= 1 ? null : () => survey.removeCategory(category.id),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () => _addCategory(survey),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Tambah kategori'),
+                ),
+                TextButton(onPressed: survey.resetCategories, child: const Text('Kembalikan bawaan')),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 14),
+            child: Text(
+              'Perhatian: foto KK/KTP/SHM disimpan di galeri HP dan dapat dibaca aplikasi lain '
+              'serta ikut backup cloud galeri. Hapus dari Riwayat bila sudah tidak diperlukan.',
+              style: TextStyle(fontSize: 12, color: Colors.orange),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

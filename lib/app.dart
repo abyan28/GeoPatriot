@@ -6,6 +6,7 @@ import 'core/theme/app_theme.dart';
 import 'history/history_screen.dart';
 import 'settings/settings_controller.dart';
 import 'settings/settings_screen.dart';
+import 'survey/survey_controller.dart';
 
 class GeoPatriotApp extends StatelessWidget {
   const GeoPatriotApp({super.key});
@@ -14,8 +15,11 @@ class GeoPatriotApp extends StatelessWidget {
   /// awal, dan daftar navigasi.
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => SettingsController(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => SettingsController()),
+        ChangeNotifierProvider(create: (_) => SurveyController()),
+      ],
       child: MaterialApp(
         title: 'GeoPatriot',
         debugShowCheckedModeBanner: false,

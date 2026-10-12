@@ -23,12 +23,15 @@ import '../map/locationiq_map_thumbnail_provider.dart';
 import '../map/models/map_snapshot.dart';
 import '../settings/settings_controller.dart';
 import '../storage/photo_storage_service.dart';
+import '../survey/survey_controller.dart';
 import '../watermark/models/watermark_configuration.dart';
 import '../core/theme/camera_tokens.dart';
 import 'widgets/camera_bottom_bar.dart';
 import 'widgets/fixed_camera_preview.dart';
 import 'widgets/gps_status_pill.dart';
 import 'widgets/manual_override_sheet.dart';
+import 'widgets/survey_object_sheet.dart';
+import 'widgets/survey_strip.dart';
 import 'camera_controller_service.dart';
 import 'device_rotation_controller.dart';
 import 'edge_anchored_rotated.dart';
@@ -63,6 +66,8 @@ class _CameraScreenState extends State<CameraScreen>
   final _rotationController = DeviceRotationController();
 
   late final CaptureController _captureController;
+  late final SurveyController _survey;
+  bool _liveWatermarkWasVisible = true;
 
   AppPermissionsSummary? _permissions;
   bool _cameraReady = false;
@@ -97,6 +102,8 @@ class _CameraScreenState extends State<CameraScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final settings = context.read<SettingsController>();
+    _survey = context.read<SurveyController>();
+    _survey.addListener(_onSurveyChanged);
     _captureController = CaptureController(
       locationService: _locationService,
       cameraService: _cameraService,
@@ -107,6 +114,8 @@ class _CameraScreenState extends State<CameraScreen>
       watermarkConfigProvider: () => settings.settings.watermark,
       saveOriginalProvider: () => settings.settings.saveOriginal,
       manualOverrideProvider: () => _manualOverride,
+      surveyShotProvider: () => _survey.currentShot,
+      surveyEnabledProvider: () => _survey.enabled,
     );
     _bootstrap();
   }
@@ -209,6 +218,25 @@ class _CameraScreenState extends State<CameraScreen>
     if (location != null) _maybeUpdateLiveWatermarkData(location);
   }
 
+  /// Live watermark tampil kecuali Mode Survei aktif dengan kategori yang
+  /// tidak memakai watermark (mis. dokumen).
+  bool get _liveWatermarkVisible {
+    final survey = _survey;
+    return !(survey.enabled && survey.selectedCategory?.applyWatermark == false);
+  }
+
+  /// Saat kategori berpindah dari "tanpa watermark" kembali ke "ber-watermark",
+  /// muat ulang alamat/peta live (selama disembunyikan tidak di-fetch).
+  void _onSurveyChanged() {
+    final visible = _liveWatermarkVisible;
+    if (visible && !_liveWatermarkWasVisible) {
+      _lastLiveGeoKey = null;
+      final location = _watermarkLocation;
+      if (location != null) _maybeUpdateLiveWatermarkData(location);
+    }
+    _liveWatermarkWasVisible = visible;
+  }
+
   /// Ambil alamat/map thumbnail untuk watermark live HANYA saat lokasi
   /// berpindah ke titik yang "praktis berbeda" (presisi sama dengan
   /// `CoordinateCache`), supaya tidak memicu request LocationIQ berulang
@@ -216,6 +244,7 @@ class _CameraScreenState extends State<CameraScreen>
   /// dengan `CaptureController`, jadi hasil ini juga dipakai ulang saat
   /// shutter benar-benar ditekan (tidak menambah jumlah request).
   Future<void> _maybeUpdateLiveWatermarkData(LocationSnapshot snapshot) async {
+    if (!_liveWatermarkVisible) return;
     final key =
         '${snapshot.latitude.toStringAsFixed(4)},${snapshot.longitude.toStringAsFixed(4)}';
     if (key == _lastLiveGeoKey) return;
@@ -365,6 +394,7 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _survey.removeListener(_onSurveyChanged);
     _stopLocation();
     _savedBannerTimer?.cancel();
     _cameraService.dispose();
@@ -409,6 +439,12 @@ class _CameraScreenState extends State<CameraScreen>
   /// error via snackbar jika gagal, atau banner "Tersimpan" (yang otomatis
   /// hilang sendiri setelah [_savedBannerDuration]) jika berhasil.
   Future<void> _onShutterPressed() async {
+    // Mode Survei aktif tapi nama belum lengkap: buka sheet, jangan memotret.
+    if (_survey.enabled && !_survey.isReady) {
+      await showSurveyObjectSheet(context, _survey);
+      return;
+    }
+
     setState(() => _isFlashing = true);
     Future.delayed(const Duration(milliseconds: 70), () {
       if (mounted) setState(() => _isFlashing = false);
@@ -656,6 +692,10 @@ class _CameraBody extends StatelessWidget {
     final captureController = context.watch<CaptureController>();
     final session = captureController.lastSession;
     final quarterTurns = context.watch<DeviceRotationController>().quarterTurns;
+    final survey = context.watch<SurveyController>();
+    final surveyActive = survey.enabled;
+    final showLiveWatermark = !(surveyActive && survey.selectedCategory?.applyWatermark == false);
+    final surveyExtra = surveyActive ? surveyStripHeight(landscape: quarterTurns.isOdd) : 0.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -680,8 +720,8 @@ class _CameraBody extends StatelessWidget {
             // 2. Overlay Watermark Live — ditambatkan ke frame preview
             // (bukan layar penuh) supaya tidak keluar dari frame saat ada
             // letterbox, dengan clearance dari HUD atas & tombol bawah.
-            if (cameraReady && controller != null)
-              _buildLiveWatermark(context, constraints, controller!, previewScale),
+            if (cameraReady && controller != null && showLiveWatermark)
+              _buildLiveWatermark(context, constraints, controller!, previewScale, surveyExtra),
 
             // 3. Zoom Ruler
             if (cameraReady && maxZoom > minZoom)
@@ -689,6 +729,7 @@ class _CameraBody extends StatelessWidget {
                 constraints,
                 quarterTurns: quarterTurns,
                 isPinching: isPinching,
+                bottomExtra: surveyExtra,
               ),
 
             // 4. Shutter Flash Effect
@@ -844,6 +885,16 @@ class _CameraBody extends StatelessWidget {
               ),
             ),
 
+            // 6b. Strip Mode Survei (objek, kategori, nama file) tepat di atas
+            // baris shutter.
+            if (surveyActive)
+              Positioned(
+                bottom: 32 + 80 + 8,
+                left: 0,
+                right: 0,
+                child: SurveyStrip(quarterTurns: quarterTurns),
+              ),
+
             // 7. Bottom Control Bar (Galeri + Shutter + Switch Camera)
             // Baris tombol kontrol bawah tetap berada di sisi fisik bawah layar
             // (bottom: 32) agar tombol rana nyaman dijangkau jempol di kedua
@@ -884,6 +935,7 @@ class _CameraBody extends StatelessWidget {
     BoxConstraints constraints,
     CameraController controller,
     double previewScale,
+    double bottomExtra,
   ) {
     // Frame preview: `FixedCameraPreview` memakai AspectRatio(1/aspectRatio)
     // yang ditengahkan di Stack.
@@ -902,7 +954,7 @@ class _CameraBody extends StatelessWidget {
     );
 
     final hudBottom = MediaQuery.paddingOf(context).top + _hudHeight + _controlsGap;
-    final controlsTop = constraints.maxHeight - _bottomControlsHeight;
+    final controlsTop = constraints.maxHeight - _bottomControlsHeight - bottomExtra;
     final topClearance = (hudBottom - rect.top).clamp(0.0, double.infinity);
     final bottomClearance = (rect.bottom - controlsTop).clamp(0.0, double.infinity);
 
@@ -945,6 +997,7 @@ class _CameraBody extends StatelessWidget {
     BoxConstraints constraints, {
     required int quarterTurns,
     required bool isPinching,
+    double bottomExtra = 0,
   }) {
     const rulerLength = 255.0;
     const rulerThickness = ZoomRulerControl.thickness;
@@ -957,7 +1010,7 @@ class _CameraBody extends StatelessWidget {
     final portraitLeft = constraints.maxWidth - rulerThickness - edgeMargin;
     final portraitTop = (constraints.maxHeight - rulerLength) / 2;
     final landscapeLeft = (constraints.maxWidth - rulerLength) / 2;
-    final landscapeTop = constraints.maxHeight - landscapeBottomMargin - rulerThickness;
+    final landscapeTop = constraints.maxHeight - landscapeBottomMargin - bottomExtra - rulerThickness;
 
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 200),

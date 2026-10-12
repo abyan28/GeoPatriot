@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../survey/survey_naming.dart';
+
 /// Mempublikasikan foto original (opsional) dan foto processed (watermark)
 /// ke Galeri publik Android, di dua album terpisah supaya keduanya mudah
 /// dibedakan tapi tetap terjangkau file manager/Galeri mana pun. Keduanya
@@ -152,6 +154,31 @@ class PhotoStorageService {
       suffix++;
     }
     return candidate;
+  }
+
+  /// Pilih nama dasar bebas bentrok untuk Mode Survei: [desired] bila belum
+  /// dipakai di album processed maupun original, selain itu `-2`, `-3`, dst.
+  /// Pemilihan memakai [pickAvailableName] (logika murni, dites terpisah).
+  Future<String> reserveNamedBaseName(String desired) {
+    return pickAvailableName(
+      desired,
+      (candidate) async =>
+          await _publicOriginalFileFor(candidate).exists() || await _publicProcessedFileFor(candidate).exists(),
+    );
+  }
+
+  /// Pindahkan file original di staging menjadi file processed di staging
+  /// TANPA mengubah isinya — dipakai kategori survei tanpa watermark, sehingga
+  /// hasilnya identik dengan JPEG kamera. Rename dengan fallback salin.
+  Future<File> promoteOriginalToProcessed(File stagingOriginal, {required String baseName}) async {
+    final target = await processedStagingFile(baseName);
+    try {
+      return await stagingOriginal.rename(target.path);
+    } on FileSystemException {
+      final copied = await stagingOriginal.copy(target.path);
+      await deleteQuietly(stagingOriginal.path);
+      return copied;
+    }
   }
 
   /// Salin foto original dari path sementara hasil capture kamera ke file

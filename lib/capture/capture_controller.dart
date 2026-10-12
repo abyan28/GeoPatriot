@@ -10,6 +10,7 @@ import '../history/photo_history_service.dart';
 import '../location/location_service.dart';
 import '../map/map_thumbnail_provider.dart';
 import '../storage/photo_storage_service.dart';
+import '../survey/survey_controller.dart';
 import '../watermark/models/watermark_configuration.dart';
 import '../watermark/watermark_renderer.dart';
 import 'exif_writer.dart';
@@ -35,6 +36,8 @@ class CaptureController extends ChangeNotifier {
     required WatermarkConfiguration Function() watermarkConfigProvider,
     required bool Function() saveOriginalProvider,
     ManualOverride? Function()? manualOverrideProvider,
+    SurveyShot? Function()? surveyShotProvider,
+    bool Function()? surveyEnabledProvider,
     WatermarkRenderer? watermarkRenderer,
     ExifWriter? exifWriter,
   })  : _locationService = locationService,
@@ -42,6 +45,8 @@ class CaptureController extends ChangeNotifier {
         _storageService = storageService,
         _saveOriginalProvider = saveOriginalProvider,
         _manualOverrideProvider = manualOverrideProvider,
+        _surveyShotProvider = surveyShotProvider,
+        _surveyEnabledProvider = surveyEnabledProvider,
         _publisher = WatermarkPublisher(
           storageService: storageService,
           geocodingProvider: geocodingProvider,
@@ -62,6 +67,14 @@ class CaptureController extends ChangeNotifier {
   /// perangkat).
   final ManualOverride? Function()? _manualOverrideProvider;
 
+  /// Data foto Mode Survei (nama + apakah ada watermark); null bila mode mati
+  /// atau datanya belum lengkap.
+  final SurveyShot? Function()? _surveyShotProvider;
+
+  /// Apakah Mode Survei sedang aktif. Bila aktif tapi [_surveyShotProvider]
+  /// null, capture ditolak supaya tidak ada foto bernama tanggung.
+  final bool Function()? _surveyEnabledProvider;
+
   CaptureStatus status = CaptureStatus.idle;
   CaptureSession? lastSession;
   String? errorMessage;
@@ -75,6 +88,12 @@ class CaptureController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final survey = _surveyShotProvider?.call();
+      if (survey == null && (_surveyEnabledProvider?.call() ?? false)) {
+        throw StateError('Mode Survei aktif tetapi nama objek/lokasi belum lengkap.');
+      }
+      final applyWatermark = survey?.applyWatermark ?? true;
+
       final manual = _manualOverrideProvider?.call();
       final timestamp = manual?.timestamp ?? DateTime.now();
       final location = manual != null && manual.hasCoordinates
@@ -82,11 +101,13 @@ class CaptureController extends ChangeNotifier {
           : await _locationService.freezeSnapshot();
       // Geocoding + peta dimulai SEKARANG, paralel dengan pengambilan foto,
       // bukan menunggu foto selesai.
-      final onlineData = _publisher.fetchOnlineData(location);
+      final onlineData = applyWatermark ? _publisher.fetchOnlineData(location) : null;
       final stopwatch = Stopwatch()..start();
       final photo = await _cameraService.takePicture();
       debugPrint('[perf] capture: takePicture ${stopwatch.elapsedMilliseconds} ms');
-      final baseName = await _storageService.reserveBaseName(timestamp);
+      final baseName = survey != null
+          ? await _storageService.reserveNamedBaseName(survey.desiredBaseName)
+          : await _storageService.reserveBaseName(timestamp);
       final stagingOriginal = await _storageService.saveOriginal(photo.path, baseName: baseName, move: true);
       await _storageService.deleteQuietly(photo.path);
 
@@ -98,6 +119,7 @@ class CaptureController extends ChangeNotifier {
         timestamp: timestamp,
         publishOriginal: _saveOriginalProvider(),
         onlineData: onlineData,
+        applyWatermark: applyWatermark,
       );
       debugPrint('[perf] capture: publish total ${stopwatch.elapsedMilliseconds} ms');
       status = CaptureStatus.success;

@@ -112,6 +112,11 @@ class WatermarkPublisher {
   /// Original dipublikasikan ke galeri hanya jika [publishOriginal] true,
   /// selain itu file stagingnya dihapus. [onlineData] opsional: hasil
   /// [fetchOnlineData] yang sudah dimulai pemanggil; bila null diambil di sini.
+  ///
+  /// Dengan [applyWatermark] false (kategori survei tanpa watermark, mis.
+  /// dokumen) foto TIDAK dirender: JPEG kamera dipakai apa adanya, geocoding
+  /// dan peta dilewati, dan tidak ada salinan original terpisah (isinya
+  /// sama). EXIF GPS + waktu tetap ditulis.
   Future<CaptureSession> publish({
     required File stagingOriginal,
     required String baseName,
@@ -119,7 +124,17 @@ class WatermarkPublisher {
     required DateTime timestamp,
     required bool publishOriginal,
     Future<OnlineData>? onlineData,
+    bool applyWatermark = true,
   }) async {
+    if (!applyWatermark) {
+      return _publishPlain(
+        stagingOriginal: stagingOriginal,
+        baseName: baseName,
+        location: location,
+        timestamp: timestamp,
+      );
+    }
+
     final config = _watermarkConfigProvider();
     final stopwatch = Stopwatch()..start();
     final online = await (onlineData ?? fetchOnlineData(location));
@@ -179,6 +194,38 @@ class WatermarkPublisher {
       timeZoneName: timestamp.timeZoneName,
       address: address,
       map: map,
+    );
+  }
+
+  /// Jalur tanpa watermark: pindahkan JPEG kamera apa adanya ke staging
+  /// processed, tulis EXIF, publikasikan, catat history.
+  Future<CaptureSession> _publishPlain({
+    required File stagingOriginal,
+    required String baseName,
+    required LocationSnapshot location,
+    required DateTime timestamp,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    final stagingProcessed = await _storageService.promoteOriginalToProcessed(stagingOriginal, baseName: baseName);
+    await _writeExifSafely(stagingProcessed, location, timestamp);
+    final processedFile = await _publishProcessedWithRetry(stagingProcessed, baseName);
+    _logPerf('tanpa watermark (total)', stopwatch);
+
+    await _historyService.add(HistoryEntry(
+      baseName: baseName,
+      originalPath: processedFile.path,
+      processedPath: processedFile.path,
+      timestamp: timestamp,
+      latitude: location.isPlaceholder ? null : location.latitude,
+      longitude: location.isPlaceholder ? null : location.longitude,
+    ));
+
+    return CaptureSession(
+      originalImageFile: processedFile,
+      processedImageFile: processedFile,
+      location: location,
+      timestamp: timestamp,
+      timeZoneName: timestamp.timeZoneName,
     );
   }
 
